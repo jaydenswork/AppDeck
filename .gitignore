@@ -1,0 +1,8 @@
+/data/
+/AppDeck.exe
+/FILE_HASHES.json
+*.pdb
+/wheel-test.exe
+/build-layout/
+/.vs/
+*.user

@@ -1,0 +1,60 @@
+--- a/app/src/input_manager.c
++++ b/app/src/input_manager.c
+@@ -11,6 +11,7 @@
+ #include "input_events.h"
+ #include "screen.h"
+ #include "shortcut_mod.h"
++#include "appdeck_input.h"
+ #include "util/log.h"
+ #include "util/sdl.h"
+
+@@ -34,7 +35,7 @@
+     im->legacy_paste = params->legacy_paste;
+     im->clipboard_autosync = params->clipboard_autosync;
+
+-    im->sdl_shortcut_mods = sc_shortcut_mods_to_sdl(params->shortcut_mods);
++    im->sdl_shortcut_mods = 0; // AppDeck: no built-in MOD shortcuts
+
+     im->vfinger_down = false;
+     im->vfinger_invert_x = false;
+@@ -445,19 +446,6 @@
+             im->last_keycode = sdl_keycode;
+             im->last_mod = mod;
+         }
+-    }
+-
+-    // Shortcuts that do not involve the MOD key
+-    switch (sdl_keycode) {
+-        case SDLK_F11:
+-            if (video && !repeat && down) {
+-                bool alt = event->mod & SDL_KMOD_ALT;
+-                bool super = event->mod & SDL_KMOD_GUI;
+-                if (!ctrl && !shift && !alt && !super) {
+-                    sc_screen_toggle_fullscreen(im->screen);
+-                }
+-            }
+-            return;
+     }
+
+     if (is_shortcut) {
+@@ -1012,6 +1000,19 @@
+ sc_input_manager_process_mouse_wheel(struct sc_input_manager *im,
+                                      const SDL_MouseWheelEvent *event) {
+     if (im->camera || !im->kp || im->screen->paused || im->disconnected) {
++        return;
++    }
++
++    // Consume only this SDL window's wheel messages. No global input hook.
++    struct appdeck_input cfg = appdeck_read_input();
++    if (cfg.enabled && cfg.wheel_volume && event->y != 0) {
++        static struct appdeck_wheel_gate gate = {0};
++        if (appdeck_wheel_accept(&gate, SDL_GetTicks(), cfg.quiet_ms)) {
++            enum android_keycode key = event->y > 0 ? AKEYCODE_VOLUME_UP : AKEYCODE_VOLUME_DOWN;
++            send_keycode(im, key, SC_ACTION_DOWN, "AppDeck wheel");
++            send_keycode(im, key, SC_ACTION_UP, "AppDeck wheel");
++            LOGI("AppDeck wheel volume: %s", event->y > 0 ? "up" : "down");
++        }
+         return;
+     }
+
+\n
