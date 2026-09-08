@@ -14,7 +14,7 @@ if (-not (Test-Path -LiteralPath $iscc)) { throw 'Inno Setup 6 was not found. In
 
 $dist = Join-Path $root 'dist'
 New-Item -ItemType Directory -Force -Path $dist | Out-Null
-& $iscc "--define=MyAppVersion=$Version" (Join-Path $PSScriptRoot 'AppDeck.iss')
+& $iscc "-dMyAppVersion=$Version" (Join-Path $PSScriptRoot 'AppDeck.iss')
 if ($LASTEXITCODE -ne 0) { throw 'Installer compilation failed' }
 
 $setup = Join-Path $dist "AppDeck-Setup-$Version.exe"
