@@ -9,3 +9,5 @@ scrcpy.exe、scrcpy-server、SDL3、FFmpeg、libusb、ADB 和相关 DLL 保持�
 appdeck-layout.jar 由本项目 native/DisplayLayout.java 和 native/TaskSession.java 构建，用于副屏排版、原任务接管与后台归还；它通过 ADB 临时运行，不安装 APK、不修改 Android 框架或应用安装包。旧版 appdeck-reset.jar / ResetDisplay.java 仅作为历史实现保留，当前程序不再调用。
 
 SDL、FFmpeg、libusb 和 Android Platform Tools 使用各自许可证。本次链接原有官方运行包中的 DLL，未修改其二进制。
+
+安装包使用 [Inno Setup](https://jrsoftware.org/isinfo.php) 构建；`installer/ChineseSimplified.isl` 来自 [jrsoftware/issrc](https://github.com/jrsoftware/issrc/blob/main/Files/Languages/ChineseSimplified.isl)，遵循 Inno Setup 项目的许可条款。
