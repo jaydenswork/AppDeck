@@ -4,5 +4,7 @@
 *.pdb
 /wheel-test.exe
 /build-layout/
+/.build/
+/dist/
 /.vs/
 *.user

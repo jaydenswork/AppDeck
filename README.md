@@ -29,6 +29,14 @@ AppDeck 通过 ADB 与 scrcpy 创建手机副屏，把指定应用的现有任�
 
 目前主要在一加 15、ColorOS 16、Android 16 上验证。不同厂商对虚拟显示器、多窗口和后台任务的实现存在差异，其他设备可能需要适配。
 
+## 下载安装
+
+在 [Releases](https://github.com/jaydenswork/AppDeck/releases) 下载最新的 `AppDeck-Setup-版本号.exe`，运行后可在安装向导中选择安装目录，并可选创建桌面快捷方式。安装版会创建开始菜单入口和卸载程序。
+
+安装版的设置、日志和窗口标题保存在 `%LOCALAPPDATA%\AppDeck`。安装程序不读取或迁移便携版目录中的旧 `data`，新用户会直接创建全新配置。
+
+当前公开构建没有商业代码签名证书，Windows SmartScreen 可能在首次运行安装包时显示来源提示。可使用同一 Release 中的 `.sha256` 文件核对下载完整性。
+
 ## 从源码运行
 
 仓库包含 AppDeck 源码、构建脚本，以及运行所需的 scrcpy 4.1、ADB、SDL 和 FFmpeg 文件。
@@ -40,7 +48,26 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 .\AppDeck.exe
 ```
 
-`build.ps1` 使用 Windows 自带的 .NET Framework x64 C# 编译器生成 `AppDeck.exe`，随后执行离线自检。生成的 EXE、PDB 和本机 `data/` 不提交到仓库。
+`build.ps1` 使用 Windows 自带的 .NET Framework x64 C# 编译器生成 `AppDeck.exe`，随后执行离线自检。源码目录直接运行时，配置仍保存在项目内的 `data/`。生成的 EXE、PDB、本机 `data/` 和安装包不提交到仓库。
+
+本机已安装 Inno Setup 6 时，也可以生成安装包：
+
+```powershell
+.\installer\build-installer.ps1
+```
+
+安装包和 SHA-256 校验文件会写入 `dist/`。
+
+## 自动发布 Release
+
+仓库中的 GitHub Actions 工作流会在 `main` 更新时校验版本、编译 AppDeck、生成安装包、静默安装、自检、卸载，然后上传构建产物。创建与 `VERSION` 一致的标签即可自动发布 Release：
+
+```powershell
+git tag v2.5.0
+git push origin v2.5.0
+```
+
+也可以在 GitHub Actions 页面手动运行工作流，只生成可下载的工作流构建产物，不创建 Release。
 
 ## 使用方法
 
@@ -91,7 +118,7 @@ AppDeck 不通过 `MULTIPLE_TASK` 重复创建应用副本。一次正常会话�
 
 ## 本地数据与隐私
 
-所有配置和诊断信息保存在程序目录的 `data/` 中，该目录已被 Git 忽略：
+安装版把配置和诊断信息保存在 `%LOCALAPPDATA%\AppDeck`；源码目录直接运行时保存在程序目录的 `data/`。项目内的 `data/` 已被 Git 忽略：
 
 | 文件 | 内容 |
 | --- | --- |

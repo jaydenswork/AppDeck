@@ -13,7 +13,10 @@ using System.Xml.Linq;
 namespace AppDeck {
     internal static class Paths {
         public static readonly string Root = AppDomain.CurrentDomain.BaseDirectory;
-        public static readonly string Data = Path.Combine(Root, "data");
+        public static readonly bool Installed = File.Exists(Path.Combine(Root, "installed.flag"));
+        public static readonly string Data = Installed
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "AppDeck")
+            : Path.Combine(Root, "data");
         public static readonly string Runtime = Path.Combine(Root, "runtime", "scrcpy");
         public static readonly string Scrcpy = Path.Combine(Runtime, "scrcpy-appdeck.exe");
         public static string Adb {
