@@ -20,8 +20,8 @@ namespace AppDeck {
         readonly List<CastForm> sessions=new List<CastForm>();readonly List<ModernButton> nav=new List<ModernButton>();
         readonly HashSet<string> openingSessions=new HashSet<string>();
         readonly string[] startupArgs;readonly bool preview;
-        List<AndroidApp> apps=new List<AndroidApp>();Button refresh,launch;IconButton favorite,themeButton;int category,loadGeneration;
-        bool refreshing,closing,closeRequested,appsLoading;string deviceSignature="";
+        List<AndroidApp> apps=new List<AndroidApp>();Button refresh,launch;IconButton favorite,themeButton;NotifyIcon tray;ContextMenuStrip trayMenu;int category,loadGeneration;
+        bool refreshing,closing,closeRequested,appsLoading,hiddenToTray,forceExit;string deviceSignature="";
         public MainForm(string[] args){
             startupArgs=args;preview=args.Contains("--preview");Text="AppDeck";ClientSize=new Size(1220,850);MinimumSize=new Size(1050,740);StartPosition=FormStartPosition.CenterScreen;KeyPreview=true;
             themeButton=Caption.AddAction(Theme.Dark?"sun":"moon","切换亮色 / 暗色",(s,e)=>ToggleTheme());
@@ -63,7 +63,7 @@ namespace AppDeck {
             KeyDown+=(s,e)=>{if(e.KeyCode==Keys.Escape&&search.Focused){e.SuppressKeyPress=true;search.Clear();}};
             deviceWatch.Tick+=async(s,e)=>await RefreshDevices(true);
             Shown+=async(s,e)=>{if(preview)return;await RefreshDevices();if(closeRequested||IsDisposed)return;deviceWatch.Start();int ix=Array.IndexOf(startupArgs,"--app");if(ix>=0&&ix+1<startupArgs.Length){var a=apps.FirstOrDefault(x=>x.Package==startupArgs[ix+1]);if(a!=null)Launch(a);}};
-            WindowTitles.Changed+=SavedTitleChanged;Disposed+=(s,e)=>WindowTitles.Changed-=SavedTitleChanged;FormClosing+=OnClosing;FormClosed+=(s,e)=>{if(!preview)SaveOptions();};UpdateLaunchButtons();if(preview)LoadPreview();
+            WindowTitles.Changed+=SavedTitleChanged;Disposed+=(s,e)=>{WindowTitles.Changed-=SavedTitleChanged;if(tray!=null)tray.Dispose();if(trayMenu!=null)trayMenu.Dispose();};FormClosing+=OnClosing;FormClosed+=(s,e)=>{if(!preview)SaveOptions();};UpdateLaunchButtons();if(preview)LoadPreview();
         }
         void ToggleTheme(){Theme.Set(!Theme.Dark);prefs.Dark=Theme.Dark;if(!preview)Save();}
         void SelectCategory(int value){category=value;string[] names={"应用库","小说阅读","我的收藏"};pageTitle.Text=names[value];for(int i=0;i<nav.Count;i++){nav[i].Selected=i==value;nav[i].Invalidate();}RenderApps();}
@@ -98,7 +98,19 @@ namespace AppDeck {
             prefs.Package=app.Package;SaveOptions();var form=new CastForm(d.Serial,app,caption,prefs.Preset,flex.Checked,audio.Checked,screenOff.Checked,clipboard.Checked,landscape:prefs.Landscape);sessions.Add(form);form.FormClosed+=(s,e)=>sessions.Remove(form);form.Show();status.Text="已打开 "+app.Name+" · 可继续选择其他应用";
             }catch(Exception ex){if(!IsDisposed)status.Text="打开失败："+ex.Message;}finally{openingSessions.Remove(openingKey);}
         }
-        async void OnClosing(object sender,FormClosingEventArgs e){if(closing)return;e.Cancel=true;if(closeRequested)return;closeRequested=true;deviceWatch.Stop();loadGeneration++;Enabled=false;await Task.Yield();foreach(var f in sessions.ToArray()){await f.StopAndClose();if(!f.IsDisposed){closeRequested=false;Enabled=true;deviceWatch.Start();status.Text="投屏任务尚未归还，暂未退出。";return;}}deviceWatch.Dispose();closing=true;Close();}
+        MainCloseAction ChooseCloseAction(CloseReason reason){
+            if(preview||forceExit||reason==CloseReason.WindowsShutDown||reason==CloseReason.TaskManagerClosing||reason==CloseReason.ApplicationExitCall)return MainCloseAction.Exit;
+            var saved=(MainCloseAction)Preferences.NormalizeMainCloseAction(prefs.MainCloseAction);if(saved!=MainCloseAction.Ask)return saved;
+            using(var dialog=new CloseChoiceDialog()){if(dialog.ShowDialog(this)!=DialogResult.OK)return MainCloseAction.Ask;if(dialog.Remember){prefs.MainCloseAction=(int)dialog.Choice;SaveOptions();}return dialog.Choice;}
+        }
+        void EnsureTray(){if(tray!=null)return;trayMenu=new ContextMenuStrip();trayMenu.Items.Add("显示主界面",null,(s,e)=>RestoreFromTray());trayMenu.Items.Add(new ToolStripSeparator());trayMenu.Items.Add("退出 AppDeck",null,(s,e)=>RequestExit());Theme.Menu(trayMenu);tray=new NotifyIcon{Icon=Icon,Text="AppDeck",ContextMenuStrip=trayMenu};tray.DoubleClick+=(s,e)=>RestoreFromTray();}
+        void HideToTray(){EnsureTray();hiddenToTray=true;tray.Visible=true;Hide();}
+        void RestoreFromTray(){if(IsDisposed)return;hiddenToTray=false;if(tray!=null)tray.Visible=false;if(WindowState==FormWindowState.Minimized)WindowState=FormWindowState.Normal;Show();Activate();BringToFront();}
+        void RequestExit(){if(closeRequested)return;forceExit=true;Close();}
+        async void OnClosing(object sender,FormClosingEventArgs e){
+            if(closing)return;e.Cancel=true;if(closeRequested)return;var action=ChooseCloseAction(e.CloseReason);if(action==MainCloseAction.Ask)return;if(action==MainCloseAction.Tray){HideToTray();return;}
+            closeRequested=true;deviceWatch.Stop();loadGeneration++;Enabled=false;await Task.Yield();foreach(var f in sessions.ToArray()){await f.StopAndClose();if(!f.IsDisposed){closeRequested=false;forceExit=false;Enabled=true;deviceWatch.Start();if(hiddenToTray)RestoreFromTray();status.Text="投屏任务尚未归还，暂未退出。";return;}}deviceWatch.Dispose();closing=true;if(tray!=null)tray.Visible=false;Close();
+        }
     }
     internal static class NativeHint {
         [System.Runtime.InteropServices.DllImport("user32.dll",CharSet=System.Runtime.InteropServices.CharSet.Unicode)]static extern IntPtr SendMessage(IntPtr h,uint m,IntPtr w,string l);

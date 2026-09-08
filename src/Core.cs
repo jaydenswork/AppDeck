@@ -131,8 +131,9 @@ namespace AppDeck {
     }
     internal sealed class Preferences {
         public string Serial = "", Package = "com.tencent.mm"; public int Preset = 0;
-        public bool Flex, Audio, ScreenOff, Clipboard, Dark, Landscape;
+        public bool Flex, Audio, ScreenOff, Clipboard, Dark, Landscape; public int MainCloseAction;
         public HashSet<string> Favorites = new HashSet<string> { "com.tencent.mm" };
+        public static int NormalizeMainCloseAction(int value) { return value>=0&&value<=2?value:0; }
         public static Preferences Load() {
             try {
                 var x = XElement.Load(Path.Combine(Paths.Data, "settings.xml"));
@@ -140,13 +141,14 @@ namespace AppDeck {
                     Preset = (int?)x.Element("preset") ?? 0, Flex = (bool?)x.Element("flex") ?? false,
                     Audio = (bool?)x.Element("audio") ?? false, ScreenOff = (bool?)x.Element("screenOff") ?? false,
                     Clipboard = (bool?)x.Element("clipboard") ?? false, Dark = (bool?)x.Element("dark") ?? false, Landscape = (bool?)x.Element("landscape") ?? false,
+                    MainCloseAction = NormalizeMainCloseAction((int?)x.Element("mainCloseAction") ?? 0),
                     Favorites = new HashSet<string>(x.Elements("favorite").Select(e => e.Value)) };
             } catch { return new Preferences(); }
         }
         public void Save() {
             Directory.CreateDirectory(Paths.Data);
             var x = new XElement("settings", new XElement("serial", Serial), new XElement("package", Package), new XElement("preset", Preset),
-                new XElement("flex", Flex), new XElement("audio", Audio), new XElement("screenOff", ScreenOff), new XElement("clipboard", Clipboard), new XElement("dark", Dark), new XElement("landscape", Landscape),
+                new XElement("flex", Flex), new XElement("audio", Audio), new XElement("screenOff", ScreenOff), new XElement("clipboard", Clipboard), new XElement("dark", Dark), new XElement("landscape", Landscape), new XElement("mainCloseAction", NormalizeMainCloseAction(MainCloseAction)),
                 Favorites.Select(f => new XElement("favorite", f)));
             string temp = Path.Combine(Paths.Data, "settings.xml.tmp"), dest = Path.Combine(Paths.Data, "settings.xml");
             x.Save(temp); if (File.Exists(dest)) File.Replace(temp, dest, null); else File.Move(temp, dest);
