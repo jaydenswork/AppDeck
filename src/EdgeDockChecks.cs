@@ -32,7 +32,7 @@ namespace AppDeck {
         public static int Desktop(string folder){
             Directory.CreateDirectory(folder);int result=1;
             using(var runner=new Runner()){runner.Shown+=async(s,e)=>{
-                try{await Windows(folder);File.WriteAllText(Path.Combine(folder,"edge-dock-check.txt"),"PASS: four-edge native move messages; cumulative pointer movement detaches; 220 ms hide / 40 ms hover delays; 140 ms clipped slide with unchanged HWND and dimensions; no activation on hover; menu/dialog/drag pause; pin preservation; minimize/maximize; tray integration; monitor work-area change and disconnect; disposal; main-window isolation; cast and main caption close buttons. Real HWND operations with injected pointer, hit target, time and display topology on the primary monitor; no physical cursor movement or Android device access. Physical mouse feel and actual scrcpy playback require separate acceptance.\r\n",Encoding.UTF8);result=0;}
+                try{await Windows(folder);File.WriteAllText(Path.Combine(folder,"edge-dock-check.txt"),"PASS: four-edge native move messages; cumulative pointer movement detaches; 220 ms hide / 40 ms hover delays; 140 ms clipped slide with unchanged HWND and dimensions; no activation on hover; menu/dialog/drag pause; pin preservation; minimize/maximize; tray integration; monitor work-area change and disconnect; disposal; main-window isolation; cast and main caption close buttons; immediate hide with delayed cleanup; responsive UI while pending; failed return restores window; retry and duplicate-close coalescing. Real HWND operations with injected pointer, hit target, time and display topology on the primary monitor; no physical cursor movement or Android device access. Physical mouse feel and actual scrcpy playback require separate acceptance.\r\n",Encoding.UTF8);result=0;}
                 catch(Exception ex){File.WriteAllText(Path.Combine(folder,"edge-dock-check.txt"),ex.ToString(),Encoding.UTF8);}
                 finally{runner.Close();}
             };Application.Run(runner);}return result;
@@ -108,6 +108,17 @@ namespace AppDeck {
             using(var main=new MainForm(new[]{"--preview"})){
                 main.StartPosition=FormStartPosition.Manual;main.Location=new Point(area.Left+30,area.Top+30);main.CreateControl();var before=main.Bounds;
                 var result=Moving(main,new Rectangle(area.Left+8,before.Top,before.Width,before.Height));Check(result.Left==area.Left+8,"main window has no snap controller");
+            }
+            using(var cast=new CastForm("preview",new AndroidApp{Name="延迟关闭回归",Package="io.appdeck.delayedclose"},"延迟关闭回归",0,false,false,false,false,true)){
+                cast.StartPosition=FormStartPosition.Manual;cast.Bounds=new Rectangle(area.Left+100,area.Top+100,360,520);cast.Show();await Task.Delay(25);
+                var cleanup=new TaskCompletionSource<bool>();int calls=0;cast.CloseCleanupForChecks=()=>{calls++;return cleanup.Task;};var watch=Stopwatch.StartNew();
+                CloseButton(cast).PerformClick();var closing=cast.StopAndClose();
+                Check(!cast.Visible&&cast.ClosingRequested&&!cast.IsDisposed&&watch.ElapsedMilliseconds<200,"close immediately hides the window while preserving cleanup ownership");
+                Check(Object.ReferenceEquals(closing,cast.StopAndClose()),"repeated close shares one cleanup operation");
+                int ticks=0;using(var pulse=new System.Windows.Forms.Timer{Interval=20}){pulse.Tick+=(s,e)=>ticks++;pulse.Start();await Task.Delay(160);pulse.Stop();}
+                Check(ticks>=2&&calls==1&&!cast.IsDisposed,"slow cleanup keeps the UI responsive and the host alive");
+                cleanup.SetResult(false);await closing;Check(cast.Visible&&cast.Enabled&&!cast.ClosingRequested&&!cast.IsDisposed,"failed task return restores a usable window");
+                cast.CloseCleanupForChecks=()=>Task.FromResult(true);await cast.StopAndClose();Check(cast.IsDisposed,"retry closes after cleanup succeeds");
             }
             using(var cast=new CastForm("preview",new AndroidApp{Name="关闭回归",Package="io.appdeck.closecheck"},"关闭回归",0,false,false,false,false,true)){
                 cast.StartPosition=FormStartPosition.Manual;cast.Bounds=new Rectangle(area.Left+100,area.Top+100,360,520);cast.Show();await Task.Delay(25);

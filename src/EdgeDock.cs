@@ -187,6 +187,7 @@ namespace AppDeck {
         public void PrepareForInteraction(){
             bool restore=animating;CancelAnimation();if(restore)Move(expanded);Collapsed=false;if(tab!=null)tab.Hide();timer.Stop();ResetDelays();holdUntil=clock()+300;
         }
+        public void PrepareForClose(){PrepareForInteraction();Clear();}
         public void Dispose(){
             if(disposed)return;disposed=true;CancelAnimation();timer.Stop();timer.Dispose();
             owner.HandleCreated-=HandleCreated;owner.HandleDestroyed-=HandleDestroyed;owner.VisibleChanged-=VisibleChanged;owner.LocationChanged-=BoundsChanged;owner.SizeChanged-=BoundsChanged;owner.Disposed-=OwnerDisposed;

@@ -12,7 +12,7 @@ namespace AppDeck {
     internal static class AppIcons {
         static readonly Dictionary<string,Image> images=new Dictionary<string,Image>();
         static readonly SemaphoreSlim gate=new SemaphoreSlim(1,1);
-        static string Folder(Device device){using(var hash=SHA256.Create()){string key=BitConverter.ToString(hash.ComputeHash(Encoding.UTF8.GetBytes(device.HardwareId??device.Serial))).Replace("-","").Substring(0,24);return Path.Combine(Paths.Data,"icons",key);}}
+        static string Folder(Device device){using(var hash=SHA256.Create()){string key=BitConverter.ToString(hash.ComputeHash(Encoding.UTF8.GetBytes(device.HardwareId??device.Serial))).Replace("-","").Substring(0,24);return Path.Combine(Paths.Data,"icons","v2-"+key);}}
         public static void AssignCached(Device device,IEnumerable<AndroidApp> apps){
             string folder=Folder(device);foreach(var app in apps){string path=Path.Combine(folder,app.Package+".png");Image image;
                 if(!images.TryGetValue(path,out image)&&File.Exists(path))try{using(var input=new MemoryStream(File.ReadAllBytes(path)))using(var decoded=Image.FromStream(input)){image=new Bitmap(decoded);images[path]=image;}}catch(ArgumentException){try{File.Delete(path);}catch(IOException){}}catch(IOException){}
@@ -28,8 +28,8 @@ namespace AppDeck {
                     for(int first=0;first<packages.Count;first+=32){
                         var batch=packages.Skip(first).Take(32).ToArray();var args=new List<string>{"shell","CLASSPATH="+remote,"app_process","/","AppIcons"};args.AddRange(batch);
                         var result=await Commands.Adb(device.Serial,args.ToArray());result.Ensure();
-                        foreach(string line in result.Output.Split('\n')){var fields=line.TrimEnd('\r').Split('\t');if(fields.Length!=3||fields[0]!="ICON"||!batch.Contains(fields[1])||fields[2].Length>131072)continue;
-                            try{byte[] bytes=Convert.FromBase64String(fields[2]);using(var input=new MemoryStream(bytes))using(var image=Image.FromStream(input)){if(image.Width!=96||image.Height!=96)continue;}string path=Path.Combine(folder,fields[1]+".png"),temp=path+".tmp-"+Guid.NewGuid().ToString("N");try{File.WriteAllBytes(temp,bytes);if(File.Exists(path))File.Replace(temp,path,null);else File.Move(temp,path);}finally{if(File.Exists(temp))File.Delete(temp);}}catch(FormatException){}catch(ArgumentException){}
+                        foreach(string line in result.Output.Split('\n')){var fields=line.TrimEnd('\r').Split('\t');if(fields.Length!=3||fields[0]!="ICON"||!batch.Contains(fields[1])||fields[2].Length>262144)continue;
+                            try{byte[] bytes=Convert.FromBase64String(fields[2]);using(var input=new MemoryStream(bytes))using(var image=Image.FromStream(input)){if(image.Width!=192||image.Height!=192)continue;}string path=Path.Combine(folder,fields[1]+".png"),temp=path+".tmp-"+Guid.NewGuid().ToString("N");try{File.WriteAllBytes(temp,bytes);if(File.Exists(path))File.Replace(temp,path,null);else File.Move(temp,path);}finally{if(File.Exists(temp))File.Delete(temp);}}catch(FormatException){}catch(ArgumentException){}
                         }
                     }
                 }catch(Exception error){try{File.AppendAllText(Path.Combine(Paths.Data,"icons.log"),DateTime.Now.ToString("s")+" "+error.Message+Environment.NewLine);}catch(IOException){}}

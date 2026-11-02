@@ -28,6 +28,8 @@ namespace AppDeck {
         internal bool VideoReady {get{return ready;}}
         internal int ActiveDisplay {get{return displayId;}}
         internal int ReceivedFrames {get{return frameCount;}}
+        internal bool ClosingRequested {get;private set;}
+        internal Func<Task<bool>> CloseCleanupForChecks;
         readonly string remoteLayoutPath="/data/local/tmp/appdeck-layout-"+Guid.NewGuid().ToString("N")+".jar";
         NotifyIcon tray;ContextMenuStrip trayMenu;
         public bool HiddenToTray {get;private set;}
@@ -65,13 +67,13 @@ namespace AppDeck {
             Shown+=(s,e)=>{if(TopLevel)Shortcuts.Add(this);};
             displayTimer.Tick+=async(s,e)=>{if(!layoutBusy&&!stopping&&directionReady){layoutTask=FitAppTasks(lifeVersion);await layoutTask;}};
             Disposed+=(s,e)=>{Shortcuts.Remove(this);lease.Abandon();displayTimer.Dispose();attachTimer.Dispose();menu.Dispose();if(tray!=null)tray.Dispose();if(trayMenu!=null)trayMenu.Dispose();};
-            FormClosing+=async(s,e)=>{if(closeAllowed)return;e.Cancel=true;await Task.Yield();await StopAndClose();};
+            FormClosing+=async(s,e)=>{if(closeAllowed)return;e.Cancel=true;await StopAndClose();};
         }
         void UpdatePin(){pin.Active=TopMost;pin.Hint(TopMost?"取消置顶":"置顶窗口");pin.Invalidate();}
         public bool HasDisplayProfile(int otherPreset,bool otherLandscape){return preset==otherPreset&&landscape==otherLandscape;}
         public bool MatchesDevice(Device device){return device.SamePhone(Serial,DeviceId);}
         public bool OfferConnection(Device device){
-            if(preview||IsDisposed||closeAllowed||!MatchesDevice(device)||device.State!="device"||launching)return false;
+            if(preview||IsDisposed||closeAllowed||ClosingRequested||!MatchesDevice(device)||device.State!="device"||launching)return false;
             if(process!=null&&!process.HasExited)return false;
             bool changed=pendingSerial!=device.Serial;pendingSerial=device.Serial;
             if(!stopping){ShowReconnectHint();}return changed;
@@ -184,7 +186,7 @@ namespace AppDeck {
         void Rename(){using(var d=new ModernForm {Text="窗口标题",ClientSize=new Size(370,195),MinimumSize=new Size(370,195),StartPosition=FormStartPosition.CenterParent}){
             var field=new Field("窗口标题"){Location=new Point(20,20),Width=320};var t=field.Input;t.Text=Text.EndsWith(" · AppDeck",StringComparison.Ordinal)?Text.Substring(0,Text.Length-10):Text;t.MaxLength=100;var ok=Theme.Button("保存",(s,e)=>{if(!String.IsNullOrWhiteSpace(t.Text)){try{UpdateTitle(t.Text.Trim());d.Close();}catch(Exception ex){Theme.Error(d,ex);}}},true);ok.Location=new Point(220,80);d.Body.Controls.Add(field);d.Body.Controls.Add(ok);d.AcceptButton=ok;d.ShowDialog(this);}}
         public void HideToTray(){
-            if(IsDisposed||!Enabled||HiddenToTray)return;
+            if(IsDisposed||!Enabled||HiddenToTray||ClosingRequested)return;
             EdgeDock.PrepareForInteraction();
             if(tray==null){
                 trayMenu=new ContextMenuStrip();trayMenu.Items.Add("显示窗口",null,(s,e)=>RestoreFromTray());trayMenu.Items.Add("关闭窗口",null,async(s,e)=>await StopAndClose());Theme.Menu(trayMenu);
@@ -196,7 +198,7 @@ namespace AppDeck {
             Hide();Log("Hidden to tray; handle="+Handle);Shortcuts.Touch(this);
         }
         public void RestoreFromTray(){
-            if(IsDisposed)return;HiddenToTray=false;if(tray!=null)tray.Visible=false;
+            if(IsDisposed||ClosingRequested)return;HiddenToTray=false;if(tray!=null)tray.Visible=false;
             EdgeDock.PrepareForInteraction();
             if(WindowState==FormWindowState.Minimized)WindowState=FormWindowState.Normal;
             Show();Activate();FitVideo();FocusVideo();Shortcuts.Touch(this);Log("Restored; handle="+Handle);
@@ -250,15 +252,15 @@ namespace AppDeck {
             }catch(Exception ex){if(Current(version)){directionWarning="窗口尺寸同步失败";Log("Task bounds: "+ex.Message);}}
             finally{layoutBusy=false;}
         }
-        Task<bool> Stop(){if(stopTask!=null&&(!stopTask.IsCompleted||stopTask.Result))return stopTask;stopTask=StopCore();return stopTask;}
+        Task<bool> Stop(){if(stopTask!=null&&(!stopTask.IsCompleted||stopTask.Status==TaskStatus.RanToCompletion&&stopTask.Result))return stopTask;stopTask=StopCore();return stopTask;}
         async Task<bool> StopCore(){
-            stopping=true;lifeVersion++;attachTimer.Stop();displayTimer.Stop();ready=false;
+            var stopWatch=Stopwatch.StartNew();stopping=true;lifeVersion++;attachTimer.Stop();displayTimer.Stop();ready=false;
             if(configureTask!=null){try{await configureTask;}catch{}}
             if(layoutTask!=null){try{await layoutTask;}catch{}}
             if(powerTask!=null){try{await powerTask;}catch{}}
             // Return tasks below the phone's current foreground before removing the display.
             // If return fails while scrcpy is alive, keep the session instead of losing a page.
-            try{Log(await lease.Return());}
+            try{Log(await lease.Return());Log("Task return completed in "+stopWatch.ElapsedMilliseconds+" ms");}
             catch(Exception ex){
                 Log("Task return: "+ex.Message);
                 if(process!=null&&!process.HasExited){
@@ -270,24 +272,31 @@ namespace AppDeck {
             }
 
             if(screenOwned){try{await Commands.Shell(Serial,"cmd","display","power-reset","0");Log("Restored owned physical display");}catch(Exception ex){Log("Display restore: "+ex.Message);}screenOwned=false;}
+            Task cleanup=null;if(layoutUploaded){cleanup=Commands.Run(Paths.Adb,new[]{"-s",Serial,"shell","rm","-f",remoteLayoutPath},1500);layoutUploaded=false;}
             var p=process;if(p!=null){
                 try{
                     if(!p.HasExited){
                         var handle=video!=IntPtr.Zero?video:Native.FindScrcpy(p.Id);
                         if(handle!=IntPtr.Zero)Native.PostMessage(handle,0x0010,IntPtr.Zero,IntPtr.Zero);else p.CloseMainWindow();
-                        bool exited=await Task.Run(()=>p.WaitForExit(5000));
-                        if(!exited){Log("Graceful close timed out; terminating owned scrcpy process");p.Kill();await Task.Run(()=>p.WaitForExit(3000));}
+                        bool exited=await Task.Run(()=>p.WaitForExit(1500));
+                        if(!exited){Log("Graceful close timed out after task return; terminating owned scrcpy process");p.Kill();await Task.Run(()=>p.WaitForExit(1000));}
                     }
                 }catch(Exception ex){Log("Stop: "+ex.Message);}finally{p.Dispose();}
             }
             process=null;video=IntPtr.Zero;displayId=-1;
-            if(layoutUploaded){try{await Commands.Shell(Serial,"rm","-f",remoteLayoutPath);}catch{}layoutUploaded=false;}
+            if(cleanup!=null){try{await cleanup;}catch{}}
+            Log("Session cleanup completed in "+stopWatch.ElapsedMilliseconds+" ms");
             return true;
         }
         public Task StopAndClose(){if(closeTask!=null&&!closeTask.IsCompleted)return closeTask;closeTask=CloseCore();return closeTask;}
         async Task CloseCore(){
             if(closeAllowed||IsDisposed)return;
-            Enabled=false;if(!await Stop()){closeTask=null;Enabled=true;return;}closeAllowed=true;attachTimer.Dispose();menu.Dispose();Close();
+            var watch=Stopwatch.StartNew();ClosingRequested=true;stopping=true;attachTimer.Stop();displayTimer.Stop();Enabled=false;EdgeDock.PrepareForClose();if(tray!=null)tray.Visible=false;Hide();Log("Close requested; window hidden in "+watch.ElapsedMilliseconds+" ms");
+            // Defer disposal beyond FormClosing, while keeping the message loop and lease alive.
+            await Task.Yield();bool stopped=false;
+            try{stopped=await (CloseCleanupForChecks==null?Stop():CloseCleanupForChecks());}catch(Exception error){Log("Close cleanup: "+error);}
+            if(!stopped){ClosingRequested=false;stopping=false;HiddenToTray=false;Enabled=true;stateLabel.Text="任务暂未归还，请恢复手机连接后重试关闭";Show();Log("Close deferred; window restored for retry");return;}
+            closeAllowed=true;attachTimer.Dispose();menu.Dispose();Close();
         }
     }
 }

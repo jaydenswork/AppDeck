@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
@@ -20,8 +20,9 @@ namespace AppDeck {
                 using(var f=new ModernForm{Text="阅读 · AppDeck",ClientSize=new Size(438,680)}){var view=new ConnectionView{Dock=DockStyle.Fill,Stage=2,Text="正在等待应用画面\n应用已启动，但画面尚未到达。\n可以继续等待，或尝试重新连接。",CanRetry=true};f.Body.Controls.Add(view);Save(f,Path.Combine(folder,"cast-waiting-"+suffix+".png"));f.Size=new Size(330,340);Save(f,Path.Combine(folder,"cast-waiting-compact-"+suffix+".png"));f.Size=new Size(330,300);Save(f,Path.Combine(folder,"cast-waiting-min-"+suffix+".png"));foreach(Control action in view.Controls)if(action.Bottom>view.Height||action.Left<0||action.Right>view.Width)throw new Exception("Waiting action clipped at minimum size");}
                 using(var f=new CloseChoiceDialog())Save(f,Path.Combine(folder,"close-choice-"+suffix+".png"));
                 SaveMenu(Path.Combine(folder,"cast-menu-"+suffix+".png"));
+                DrawingQualityChecks.Render(folder,suffix);
             }
-            File.WriteAllText(Path.Combine(folder,"render-check.txt"),"PASS: 36 offscreen renders; light/dark; main normal/compact/scrolled/loading/empty states; cast portrait/compact/landscape and waiting states down to 330x300; shortcut/wireless discovery/pairing/manual/close dialogs; caption and waiting action bounds; text/button contrast >=4.5 and control borders >=3.0; cast menu without check/image columns. No device access or desktop capture.\r\n");return 0;
+            File.WriteAllText(Path.Combine(folder,"render-check.txt"),"PASS: 44 offscreen renders; light/dark; main normal/compact/scrolled/loading/empty states; cast portrait/compact/landscape and waiting states down to 330x300; shortcut/wireless discovery/pairing/manual/close dialogs; caption and waiting action bounds; text/button contrast >=4.5 and control borders >=3.0; cast menu without check/image columns; rounded-image/border fractional alpha and unchanged image interior at 100/125/150/200 percent raster scales. No device access or desktop capture; raster scales do not change system DPI.\r\n");return 0;
         }catch(Exception ex){File.WriteAllText(Path.Combine(folder,"error.txt"),ex.ToString());return 1;}}
         static double Luminance(Color c){double[] rgb={c.R/255.0,c.G/255.0,c.B/255.0};for(int i=0;i<3;i++)rgb[i]=rgb[i]<=.04045?rgb[i]/12.92:Math.Pow((rgb[i]+.055)/1.055,2.4);return rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722;}
         static double Contrast(Color a,Color b){double x=Luminance(a),y=Luminance(b);return (Math.Max(x,y)+.05)/(Math.Min(x,y)+.05);}

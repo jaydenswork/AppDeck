@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -76,7 +76,7 @@ namespace AppDeck {
                 var apps=new[]{new AndroidApp{Name="Chrome",Package="com.android.chrome"},new AndroidApp{Name="阅读",Package="io.legado.app.release"},new AndroidApp{Name="微信",Package="com.tencent.mm"}};
                 AppIcons.Fetch(device,apps).GetAwaiter().GetResult();AppIcons.AssignCached(device,apps);
                 int count=apps.Count(a=>a.Icon!=null);if(count==0)throw new Exception("No application icons returned; see icons.log");
-                File.WriteAllText(Path.Combine(Paths.Data,"icons-check.txt"),"PASS: "+count+" real 96x96 application icons read and cached; no activities launched, no control input or phone setting changes.\r\n",Encoding.UTF8);return 0;
+                File.WriteAllText(Path.Combine(Paths.Data,"icons-check.txt"),"PASS: "+count+" real 192x192 application icons read and cached; no activities launched, no control input or phone setting changes.\r\n",Encoding.UTF8);return 0;
             }catch(Exception error){File.WriteAllText(Path.Combine(Paths.Data,"icons-check.txt"),error.ToString());return 1;}
         }
     }

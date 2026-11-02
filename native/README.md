@@ -37,7 +37,7 @@ java -cp ANDROID_SDK/build-tools/36.1.0/lib/d8.jar com.android.tools.r8.D8 --min
 
 ## 应用图标
 
-`AppIcons.java` 在独立 shell 进程中使用 `com.android.shell` 的包上下文读取已知应用的公开图标资源，将 Drawable 渲染为 96 × 96 PNG，通过标准输出传回电脑。不安装 APK、不启动 Activity、不发送控制输入、不修改手机设置。客户端按设备身份缓存图标，七天后重新读取；缓存缺失或读取失败时使用字形占位图。临时 helper 在读取完成后删除。
+`AppIcons.java` 在独立 shell 进程中使用 `com.android.shell` 的包上下文读取已知应用的公开图标资源，将 Drawable 渲染为 192 × 192 PNG，通过标准输出传回电脑。不安装 APK、不启动 Activity、不发送控制输入、不修改手机设置。客户端按设备身份缓存图标，七天后重新读取；缓存缺失或读取失败时使用字形占位图。临时 helper 在读取完成后删除。
 
 ## 原任务接管与后台归还
 

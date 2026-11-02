@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Text;
@@ -23,7 +24,10 @@ namespace AppDeck {
                     finally{
                         File.WriteAllText(Path.Combine(folder,"cast-check.txt"),report.ToString(),Encoding.UTF8);
                     }
-                    await form.StopAndClose();if(!form.IsDisposed){File.AppendAllText(Path.Combine(folder,"cast-check.txt"),"Cleanup not completed; session retained\r\n");exit=1;}
+                    var closeWatch=Stopwatch.StartNew();var close=form.StopAndClose();
+                    File.AppendAllText(Path.Combine(folder,"cast-check.txt"),"Close response: hidden="+!form.Visible+" elapsedMs="+closeWatch.ElapsedMilliseconds+"\r\n");
+                    await close;File.AppendAllText(Path.Combine(folder,"cast-check.txt"),"Cleanup complete: disposed="+form.IsDisposed+" elapsedMs="+closeWatch.ElapsedMilliseconds+"\r\n");
+                    if(!form.IsDisposed){File.AppendAllText(Path.Combine(folder,"cast-check.txt"),"Cleanup not completed; session retained\r\n");exit=1;}
                 };Application.Run(form);
             }return exit;
         }

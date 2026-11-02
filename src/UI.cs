@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
@@ -55,8 +55,8 @@ namespace AppDeck {
     }
     internal static class PaintKit {
         public static GraphicsPath Round(RectangleF r,float radius){var p=new GraphicsPath();float d=Math.Min(radius*2,Math.Min(r.Width,r.Height));if(d<=0){p.AddRectangle(r);return p;}p.AddArc(r.X,r.Y,d,d,180,90);p.AddArc(r.Right-d,r.Y,d,d,270,90);p.AddArc(r.Right-d,r.Bottom-d,d,d,0,90);p.AddArc(r.X,r.Bottom-d,d,d,90,90);p.CloseFigure();return p;}
-        public static void Fill(Graphics g,RectangleF r,Color c,float radius=10){using(var p=Round(r,radius))using(var b=new SolidBrush(c))g.FillPath(b,p);}
-        public static void Border(Graphics g,RectangleF r,Color c,float radius=10,float width=1){using(var p=Round(r,radius))using(var pen=new Pen(c,width))g.DrawPath(pen,p);}
+        public static void Fill(Graphics g,RectangleF r,Color c,float radius=10){SmoothDrawing.Fill(g,r,c,radius);}
+        public static void Border(Graphics g,RectangleF r,Color c,float radius=10,float width=1){SmoothDrawing.Border(g,r,c,radius,width);}
         public static void Text(Graphics g,string text,Font font,Color color,Rectangle r,TextFormatFlags flags=TextFormatFlags.Left|TextFormatFlags.VerticalCenter|TextFormatFlags.EndEllipsis|TextFormatFlags.NoPrefix){TextRenderer.DrawText(g,text,font,r,color,flags);}
         public static void Icon(Graphics g,string name,RectangleF box,Color color){
             var save=g.Save();g.SmoothingMode=SmoothingMode.AntiAlias;g.TranslateTransform(box.X,box.Y);g.ScaleTransform(box.Width/24f,box.Height/24f);
@@ -95,7 +95,7 @@ namespace AppDeck {
         protected override void OnMouseEnter(EventArgs e){hover=true;Invalidate();base.OnMouseEnter(e);}protected override void OnMouseLeave(EventArgs e){hover=false;down=false;Invalidate();base.OnMouseLeave(e);}protected override void OnMouseDown(MouseEventArgs e){down=true;Invalidate();base.OnMouseDown(e);}protected override void OnMouseUp(MouseEventArgs e){down=false;Invalidate();base.OnMouseUp(e);}protected override void OnEnabledChanged(EventArgs e){Invalidate();base.OnEnabledChanged(e);}
         protected override void OnPaint(PaintEventArgs e){var g=e.Graphics;g.SmoothingMode=SmoothingMode.AntiAlias;g.Clear(Parent==null?Theme.Surface:Parent.BackColor);float s=g.DpiX/96f;
             var r=new RectangleF(0.5f,0.5f,Width-1,Height-1);Color bg=Primary?(Enabled?(down?Theme.PrimaryPressed:hover?Theme.PrimaryHover:Theme.AccentFill):Theme.Soft):Selected?Theme.AccentSoft:(down||hover?Theme.Soft:BackColor);if(!Quiet||hover||Selected)PaintKit.Fill(g,r,bg,8*s);
-            if(!Primary&&!Quiet&&!Selected)PaintKit.Border(g,r,Theme.Line,9*s);
+            if(!Primary&&!Quiet&&!Selected)PaintKit.Border(g,r,Theme.Line,8*s);
             var fg=!Enabled?Theme.Muted:Primary?Color.White:Selected?Theme.Accent:Theme.Ink;
             int icon=Glyph.Length>0?(int)(18*s):0;int offset=icon>0?(int)(42*s):(int)(12*s);if(icon>0)PaintKit.Icon(g,Glyph,new RectangleF(13*s,(Height-icon)/2f,icon,icon),fg);
             PaintKit.Text(g,Text,Font,fg,new Rectangle(AlignContentLeft?offset:icon>0?(int)(34*s):0,0,Width-(AlignContentLeft?offset+8:icon>0?(int)(34*s):0),Height),TextFormatFlags.VerticalCenter|(AlignContentLeft?TextFormatFlags.Left:TextFormatFlags.HorizontalCenter)|TextFormatFlags.EndEllipsis|TextFormatFlags.NoPrefix);
@@ -124,6 +124,7 @@ namespace AppDeck {
         public Field(string hint,bool isSearch=false){search=isSearch;DoubleBuffered=true;Height=40;Padding=new Padding(search?39:12,10,search?39:12,8);Input.BorderStyle=BorderStyle.None;Input.Dock=DockStyle.Fill;Input.Font=Theme.Font(10.5f);Input.AccessibleName=hint;NativeHint.Set(Input,hint);Controls.Add(Input);Input.GotFocus+=(s,e)=>Invalidate();Input.LostFocus+=(s,e)=>Invalidate();
             if(search){clear=new IconButton("close","清空搜索"){Dock=DockStyle.Right,Width=30,Visible=false};clear.Click+=(s,e)=>{Input.Clear();Input.Focus();};Controls.Add(clear);Input.TextChanged+=(s,e)=>{clear.Visible=Input.TextLength>0;};}
             Theme.Watch(this,()=>{BackColor=Theme.Surface;Input.BackColor=Theme.Surface;Input.ForeColor=Theme.Ink;Invalidate();});}
+        protected override void OnPaintBackground(PaintEventArgs e){e.Graphics.Clear(Parent==null?Theme.Surface:Parent.BackColor);PaintKit.Fill(e.Graphics,new RectangleF(0,0,Width,Height),BackColor,8*e.Graphics.DpiX/96);}
         protected override void OnPaint(PaintEventArgs e){base.OnPaint(e);e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;float s=e.Graphics.DpiX/96;PaintKit.Border(e.Graphics,new RectangleF(.5f,.5f,Width-1,Height-1),Input.Focused?Theme.Accent:Theme.ControlLine,8*s,Input.Focused?1.5f:1);if(search)PaintKit.Icon(e.Graphics,"search",new RectangleF(12*s,(Height-18*s)/2,18*s,18*s),Theme.Muted);}
     }
     internal sealed class ScrollArea:Panel {
@@ -149,7 +150,7 @@ namespace AppDeck {
     }
     internal sealed class AppBadge:Control {
         public AndroidApp App;public AppBadge(){Size=new Size(50,50);DoubleBuffered=true;Theme.Watch(this,()=>Invalidate());}
-        public static void Draw(Graphics g,RectangleF r,AndroidApp app){if(app!=null&&app.Icon!=null){var state=g.Save();using(var clip=PaintKit.Round(r,r.Width*.24f)){g.SetClip(clip);g.DrawImage(app.Icon,r);}g.Restore(state);return;}string key=app==null?"AppDeck":app.Package;int hash=0;foreach(char c in key)hash=unchecked(hash*31+c);int[] colors={0x7155E8,0x278B72,0xC07836,0x3E80C8,0xBE607A};Color color=Theme.C(colors[(hash&0x7fffffff)%colors.Length]);PaintKit.Fill(g,r,Color.FromArgb(Theme.Dark?55:25,color),r.Width*.27f);using(var font=Theme.Font(r.Width*.29f,true))PaintKit.Text(g,app==null?"A":app.Name.Substring(0,1),font,Theme.Dark?Blend(color,Color.White,.35f):color,Rectangle.Round(r),TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);}
+        public static void Draw(Graphics g,RectangleF r,AndroidApp app){if(app!=null&&app.Icon!=null){SmoothDrawing.Image(g,r,app.Icon,r.Width*.24f);return;}string key=app==null?"AppDeck":app.Package;int hash=0;foreach(char c in key)hash=unchecked(hash*31+c);int[] colors={0x7155E8,0x278B72,0xC07836,0x3E80C8,0xBE607A};Color color=Theme.C(colors[(hash&0x7fffffff)%colors.Length]);PaintKit.Fill(g,r,Color.FromArgb(Theme.Dark?55:25,color),r.Width*.27f);using(var font=Theme.Font(r.Width*.29f,true))PaintKit.Text(g,app==null?"A":app.Name.Substring(0,1),font,Theme.Dark?Blend(color,Color.White,.35f):color,Rectangle.Round(r),TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);}
         static Color Blend(Color a,Color b,float t){return Color.FromArgb((int)(a.R*(1-t)+b.R*t),(int)(a.G*(1-t)+b.G*t),(int)(a.B*(1-t)+b.B*t));}
         protected override void OnPaint(PaintEventArgs e){e.Graphics.Clear(BackColor);e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;Draw(e.Graphics,new RectangleF(0,0,Width,Height),App);}
     }

@@ -20,8 +20,8 @@ public final class AppIcons {
             if (!name.matches("[A-Za-z0-9_]+(?:\\.[A-Za-z0-9_]+)+")) continue;
             try {
                 Drawable drawable = manager.getApplicationIcon(name);
-                Bitmap bitmap = Bitmap.createBitmap(96, 96, Bitmap.Config.ARGB_8888);
-                drawable.setBounds(0, 0, 96, 96);
+                Bitmap bitmap = Bitmap.createBitmap(192, 192, Bitmap.Config.ARGB_8888);
+                drawable.setBounds(0, 0, 192, 192);
                 drawable.draw(new Canvas(bitmap));
                 ByteArrayOutputStream output = new ByteArrayOutputStream();
                 bitmap.compress(Bitmap.CompressFormat.PNG, 100, output);
