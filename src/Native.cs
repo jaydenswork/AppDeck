@@ -7,6 +7,7 @@ namespace AppDeck {
         [DllImport("user32.dll")] internal static extern bool UnregisterHotKey(IntPtr h,int id);
         [DllImport("user32.dll")] internal static extern IntPtr GetForegroundWindow();
         [DllImport("user32.dll")] internal static extern IntPtr GetAncestor(IntPtr h,uint flags);
+        [DllImport("user32.dll")] internal static extern IntPtr WindowFromPoint(ScreenPoint point);
         internal delegate bool EnumProc(IntPtr h, IntPtr p);
         [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc proc, IntPtr p);
         [DllImport("user32.dll")] internal static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
@@ -22,6 +23,9 @@ namespace AppDeck {
         [DllImport("user32.dll")] internal static extern IntPtr SetFocus(IntPtr h);
         [DllImport("user32.dll")] internal static extern bool PostMessage(IntPtr h,uint msg,IntPtr w,IntPtr l);
         [DllImport("user32.dll")] internal static extern bool ShowWindow(IntPtr h,int cmd);
+        [DllImport("gdi32.dll")] internal static extern IntPtr CreateRectRgn(int left,int top,int right,int bottom);
+        [DllImport("gdi32.dll")] internal static extern bool DeleteObject(IntPtr handle);
+        [DllImport("user32.dll")] internal static extern int SetWindowRgn(IntPtr window,IntPtr region,bool redraw);
         internal static IntPtr FindScrcpy(int pid) {
             IntPtr result=IntPtr.Zero;
             EnumWindows((h,p)=> { uint id; GetWindowThreadProcessId(h,out id); if(id!=pid)return true;

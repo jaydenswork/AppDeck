@@ -29,13 +29,17 @@ python native/build-client.py --source C:/build/scrcpy-4.1 --deps C:/build/deps 
 入口拒绝 displayId ≤ 0，只操作当时归属目标副屏的任务，不改主屏或全局旋转／兼容开关。每个会话使用独立临时 jar，结束后删除。首次调用附加 refresh 参数，后续尺寸一致的任务跳过。
 
 ```powershell
-javac -d build-layout native/DisplayLayout.java native/TaskSession.java
-java -cp ANDROID_SDK/build-tools/34.0.0/lib/d8.jar com.android.tools.r8.D8 --min-api 30 --output runtime/scrcpy/appdeck-layout.jar build-layout/DisplayLayout.class build-layout/TaskSession.class
+javac -d build-layout native/DisplayLayout.java native/TaskSession.java native/DisplayPower.java
+java -cp ANDROID_SDK/build-tools/34.0.0/lib/d8.jar com.android.tools.r8.D8 --min-api 30 --output runtime/scrcpy/appdeck-layout.jar build-layout/DisplayLayout.class build-layout/TaskSession.class build-layout/DisplayPower.class
 ```
+
+`DisplayPower.java` 只接受 displayId > 0、类型为虚拟屏且名称/唯一标识符合 scrcpy 的显示器。视频首帧迟迟未到达时，可通过按显示器请求电源状态恢复该副屏；不发送全局唤醒键，不改变手机主屏电源、锁定或系统超时设置。调用结果记录副屏与主屏的前后状态。
 
 ## 原任务接管与后台归还
 
 TaskSession.java 使用 shell 权限调用系统任务接口，不安装 APK。接管前记录当前用户、启动周期、显示器唯一标识、任务 ID 和原始窗口配置；已有任务通过临时空根容器跨屏移动，不重发启动 Intent。只有无运行任务时才使用 startActivityFromRecents；无最近任务时使用普通 NEW_TASK，禁用 MULTIPLE_TASK。
+
+创建临时根容器时兼容三参数和四参数 `TaskOrganizer.createRootTask`，接管与归还共用同一适配方法。一加 15 / Android 17 当前固件实测仅公开三参数版本；接口不兼容时仍保留原任务和投屏会话，避免在任务未归还时销毁副屏。
 
 归还时将任务通过本程序创建的空根容器移动到主屏底部，并解开容器；随后才恢复主屏窗口配置，最后删除空容器。不能先在横屏副屏恢复 fullscreen：实测 ColorOS 会因此遗留 Activity 绘制偏移。操作只删除本程序创建且确认为空的容器，不移除用户任务，不调用 force-stop。
 

@@ -11,13 +11,14 @@ namespace AppDeck {
         readonly SelectBox devices=new SelectBox(),preset=new SelectBox(),orientation=new SelectBox();
         readonly Field searchField=new Field("搜索应用名称或包名",true),titleField=new Field("窗口标题");
         TextBox search{get{return searchField.Input;}}TextBox title{get{return titleField.Input;}}
-        readonly ToggleRow flex,audio,screenOff,clipboard;
+        readonly ToggleRow flex,audio,screenOff,clipboard,edgeAutoHide;
         readonly CatalogView appList=new CatalogView();
         readonly Label status=Theme.Hint("正在查找手机…",8),deviceInfo=Theme.Hint("USB / 无线 ADB",8),catalogCount=Theme.Hint("等待读取应用",8),pageTitle=Theme.Label("应用库",24,true);
         readonly Label selectedName=Theme.Label("选择一个应用",13,true),selectedPackage=Theme.Hint("独立窗口，自在阅读",8);
         readonly AppBadge badge=new AppBadge();
         readonly System.Windows.Forms.Timer deviceWatch=new System.Windows.Forms.Timer{Interval=3000};
         readonly List<CastForm> sessions=new List<CastForm>();readonly List<ModernButton> nav=new List<ModernButton>();
+        readonly WirelessMonitor wirelessMonitor=new WirelessMonitor();
         readonly HashSet<string> openingSessions=new HashSet<string>();
         readonly string[] startupArgs;readonly bool preview;
         List<AndroidApp> apps=new List<AndroidApp>();Button refresh,launch;IconButton favorite,themeButton;NotifyIcon tray;ContextMenuStrip trayMenu;int category,loadGeneration;
@@ -41,7 +42,7 @@ namespace AppDeck {
             var phoneGlyph=new IconButton("phone","连接的 Android 设备"){Dock=DockStyle.Fill,Enabled=false};connectionGrid.Controls.Add(phoneGlyph,0,0);
             devices.Dock=DockStyle.Fill;devices.AccessibleName="选择已连接手机";devices.Margin=new Padding(2,0,12,0);devices.SelectedIndexChanged+=async(s,e)=>{if(!refreshing&&!preview)await LoadApps();};connectionGrid.Controls.Add(devices,1,0);
             refresh=new IconButton("refresh","刷新连接设备"){Dock=DockStyle.Fill};refresh.Click+=async(s,e)=>{if(!preview)await RefreshDevices();};connectionGrid.Controls.Add(refresh,2,0);
-            var wireless=new ModernButton{Text="无线连接",Quiet=true,Dock=DockStyle.Fill};wireless.Click+=async(s,e)=>{using(var d=new WirelessDialog())d.ShowDialog(this);if(!preview)await RefreshDevices();};connectionGrid.Controls.Add(wireless,3,0);content.Controls.Add(connection,0,1);
+            var wireless=new ModernButton{Text="无线连接",Quiet=true,Dock=DockStyle.Fill};wireless.Click+=async(s,e)=>{using(var d=new WirelessDialog(preview?null:wirelessMonitor))d.ShowDialog(this);if(!preview)await RefreshDevices();};connectionGrid.Controls.Add(wireless,3,0);content.Controls.Add(connection,0,1);
             var searchRow=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,Margin=Padding.Empty};searchRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));searchRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,180));searchField.Dock=DockStyle.Top;searchField.Height=42;searchRow.Controls.Add(searchField,0,0);catalogCount.Dock=DockStyle.Fill;catalogCount.TextAlign=ContentAlignment.MiddleRight;catalogCount.Margin=new Padding(8,0,0,18);searchRow.Controls.Add(catalogCount,1,0);content.Controls.Add(searchRow,0,2);
             search.TextChanged+=(s,e)=>RenderApps();search.KeyDown+=(s,e)=>{if(e.KeyCode==Keys.Enter){e.SuppressKeyPress=true;LaunchSelected();}else if(e.KeyCode==Keys.Down){e.SuppressKeyPress=true;appList.Focus();}};
             var workspace=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,RowCount=1,Margin=Padding.Empty};workspace.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));workspace.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,280));content.Controls.Add(workspace,0,3);
@@ -55,14 +56,16 @@ namespace AppDeck {
             options.Controls.Add(Theme.Hint("显示方向",8));orientation.Items.AddRange(new object[]{"竖屏","横屏"});orientation.SelectedIndex=prefs.Landscape?1:0;orientation.Width=228;orientation.Margin=new Padding(0,0,0,12);options.Controls.Add(orientation);orientation.SelectedIndexChanged+=(s,e)=>UpdatePresets();
             options.Controls.Add(Theme.Hint("画面尺寸",8));preset.Width=228;UpdatePresets();preset.SelectedIndex=Math.Max(0,Math.Min(3,prefs.Preset));preset.Margin=new Padding(0,0,0,13);options.Controls.Add(preset);
             flex=new ToggleRow("自适应排版","开启后跟随窗口，覆盖预设尺寸",prefs.Flex);screenOff=new ToggleRow("手机灭屏","投屏时关闭手机实体屏",prefs.ScreenOff);audio=new ToggleRow("传输音频","同时播放手机媒体声音",prefs.Audio);clipboard=new ToggleRow("剪贴板同步","支持复制和中文粘贴",prefs.Clipboard);
-            foreach(var toggle in new[]{flex,screenOff,audio,clipboard}){toggle.Width=228;toggle.Margin=Padding.Empty;options.Controls.Add(toggle);}
+            edgeAutoHide=new ToggleRow("贴边自动收起","移出收起，移到边缘展开",prefs.EdgeAutoHide);
+            foreach(var toggle in new[]{clipboard,edgeAutoHide,flex,screenOff,audio}){toggle.Width=228;toggle.Margin=Padding.Empty;options.Controls.Add(toggle);}
+            edgeAutoHide.CheckedChanged+=(s,e)=>{if(preview)return;SaveOptions();foreach(var session in sessions.ToArray())if(!session.IsDisposed)session.EdgeDock.Enabled=edgeAutoHide.Checked;};
             var actions=new TableLayoutPanel{Dock=DockStyle.Fill,RowCount=1,ColumnCount=1,Margin=Padding.Empty,Padding=new Padding(0,14,0,0)};actions.RowStyles.Add(new RowStyle(SizeType.Percent,100));
             launch=new ModernButton{Text="打开独立窗口",Font=Theme.Font(10,true),Primary=true,Dock=DockStyle.Fill};launch.Click+=(s,e)=>LaunchSelected();actions.Controls.Add(launch,0,0);detailLayout.Controls.Add(actions,0,2);
             var footer=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,Margin=Padding.Empty};footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,245));status.Dock=DockStyle.Fill;status.AutoSize=false;status.AutoEllipsis=true;status.TextAlign=ContentAlignment.BottomLeft;deviceInfo.Dock=DockStyle.Fill;deviceInfo.AutoSize=false;deviceInfo.AutoEllipsis=true;deviceInfo.TextAlign=ContentAlignment.BottomRight;footer.Controls.Add(status,0,0);footer.Controls.Add(deviceInfo,1,0);content.Controls.Add(footer,0,4);
             Theme.Watch(this,()=>{shell.BackColor=content.BackColor=workspace.BackColor=heading.BackColor=footer.BackColor=Theme.Paper;selectedHeader.BackColor=optionsScroll.BackColor=options.BackColor=detailLayout.BackColor=actions.BackColor=connectionGrid.BackColor=Theme.Surface;});
             KeyDown+=(s,e)=>{if(e.KeyCode==Keys.Escape&&search.Focused){e.SuppressKeyPress=true;search.Clear();}};
             deviceWatch.Tick+=async(s,e)=>await RefreshDevices(true);
-            Shown+=async(s,e)=>{if(preview)return;await RefreshDevices();if(closeRequested||IsDisposed)return;deviceWatch.Start();int ix=Array.IndexOf(startupArgs,"--app");if(ix>=0&&ix+1<startupArgs.Length){var a=apps.FirstOrDefault(x=>x.Package==startupArgs[ix+1]);if(a!=null)Launch(a);}};
+            Shown+=async(s,e)=>{if(preview)return;await RefreshDevices();if(closeRequested||IsDisposed)return;deviceWatch.Start();if(startupArgs.Contains("--wireless"))using(var dialog=new WirelessDialog(wirelessMonitor))dialog.ShowDialog(this);int ix=Array.IndexOf(startupArgs,"--app");if(ix>=0&&ix+1<startupArgs.Length){var a=apps.FirstOrDefault(x=>x.Package==startupArgs[ix+1]);if(a!=null)Launch(a);}};
             WindowTitles.Changed+=SavedTitleChanged;Disposed+=(s,e)=>{WindowTitles.Changed-=SavedTitleChanged;if(tray!=null)tray.Dispose();if(trayMenu!=null)trayMenu.Dispose();};FormClosing+=OnClosing;FormClosed+=(s,e)=>{if(!preview)SaveOptions();};UpdateLaunchButtons();if(preview)LoadPreview();
         }
         void ToggleTheme(){Theme.Set(!Theme.Dark);prefs.Dark=Theme.Dark;if(!preview)Save();}
@@ -71,31 +74,48 @@ namespace AppDeck {
         void SavedTitleChanged(string package){if(!IsDisposed&&SelectedApp!=null&&SelectedApp.Package==package&&!title.Focused)title.Text=WindowTitles.Get(package,SelectedApp.Name);}
         void ToggleFavorite(){var a=SelectedApp;if(a==null)return;if(!prefs.Favorites.Add(a.Package))prefs.Favorites.Remove(a.Package);if(!preview)Save();RenderApps();}
         void UpdatePresets(){int choice=Math.Max(0,preset.SelectedIndex);preset.Items.Clear();for(int i=0;i<4;i++)preset.Items.Add(DisplayProfile.Description(i,orientation.SelectedIndex==1));preset.SelectedIndex=choice;preset.Invalidate();}
-        void SaveOptions(){prefs.Preset=preset.SelectedIndex;prefs.Landscape=orientation.SelectedIndex==1;prefs.Flex=flex.Checked;prefs.Audio=audio.Checked;prefs.ScreenOff=screenOff.Checked;prefs.Clipboard=clipboard.Checked;prefs.Dark=Theme.Dark;Save();}
+        void SaveOptions(){prefs.Preset=preset.SelectedIndex;prefs.Landscape=orientation.SelectedIndex==1;prefs.Flex=flex.Checked;prefs.Audio=audio.Checked;prefs.ScreenOff=screenOff.Checked;prefs.Clipboard=clipboard.Checked;prefs.EdgeAutoHide=edgeAutoHide.Checked;prefs.Dark=Theme.Dark;Save();}
         void LoadPreview(){refreshing=true;devices.Items.Add(new Device{Model="OnePlus 15",Serial="UI PREVIEW",State="device"});devices.SelectedIndex=0;refreshing=false;string[] names={"微信","阅读","QQ 阅读","起点读书","番茄免费小说","书旗小说","七猫免费小说","知乎","哔哩哔哩","网易云音乐","豆瓣","小红书","支付宝","美团","京东","百度地图"};string[] packages={"com.tencent.mm","io.legado.app.release","com.qq.reader","com.qidian.QDReader","com.dragon.read","com.shuqi.controller","com.kmxs.reader","com.zhihu.android","tv.danmaku.bili","com.netease.cloudmusic","com.douban.frodo","com.xingin.xhs","com.eg.android.AlipayGphone","com.sankuai.meituan","com.jingdong.app.mall","com.baidu.BaiduMap"};for(int i=0;i<names.Length;i++)apps.Add(new AndroidApp{Name=names[i],Package=packages[i]});prefs.Favorites.Add("io.legado.app.release");RenderApps();status.Text="界面预览 · 示例应用，不连接手机";deviceInfo.Text="Android 16  ·  USB";}
         internal static void ProcessFile(string path){System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(path){UseShellExecute=true});}
         Device SelectedDevice{get{return devices.SelectedItem as Device;}}AndroidApp SelectedApp{get{return appList.SelectedApp;}}
         void Save(){try{prefs.Dark=Theme.Dark;prefs.Save();}catch(Exception ex){status.Text="设置保存失败："+ex.Message;}}
         async Task RefreshDevices(bool automatic=false){
             if(refreshing||closeRequested)return;refreshing=true;refresh.Enabled=false;if(!automatic)status.Text="正在查找设备…";
-            try{string selected=SelectedDevice==null?prefs.Serial:SelectedDevice.Serial;var r=await Commands.Run(Paths.Adb,new[]{"devices","-l"});r.Ensure();var list=Device.Parse(r.Output);if(closeRequested||IsDisposed)return;string signature=String.Join("|",list.Select(d=>d.Serial+":"+d.State+":"+d.Model));if(automatic&&signature==deviceSignature)return;deviceSignature=signature;loadGeneration++;devices.Items.Clear();devices.Items.AddRange(list.ToArray());devices.SelectedItem=list.FirstOrDefault(d=>d.Serial==selected)??list.FirstOrDefault(d=>d.State=="device")??list.FirstOrDefault();if(list.Count==0){appsLoading=false;apps.Clear();RenderApps();deviceInfo.Text="等待 USB / 无线 ADB";status.Text="等待手机连接 · 自动检测中";}}
+            string recoveryNotice="";
+            try{
+                string selected=SelectedDevice==null?prefs.Serial:SelectedDevice.Serial,id=SelectedDevice==null?prefs.DeviceId:SelectedDevice.HardwareId;
+                if(String.IsNullOrEmpty(id))id=prefs.DeviceId;
+                await wirelessMonitor.Refresh();var list=wirelessMonitor.Devices;if(closeRequested||IsDisposed)return;
+                foreach(var session in sessions.ToArray()){
+                    var available=list.FirstOrDefault(d=>d.State=="device"&&d.Serial==session.Serial&&session.MatchesDevice(d))??list.FirstOrDefault(d=>d.State=="device"&&session.MatchesDevice(d));
+                    if(available!=null){if(session.OfferConnection(available))recoveryNotice="手机已重新连接 · 在原投屏窗口点击更多 → 恢复投屏";}
+                    else session.ConnectionUnavailable();
+                }
+                string signature=String.Join("|",list.Select(d=>d.Serial+":"+d.State+":"+d.Model+":"+d.HardwareId+":"+d.TransportId));
+                if(automatic&&signature==deviceSignature){if(recoveryNotice.Length>0)status.Text=recoveryNotice;return;}
+                deviceSignature=signature;loadGeneration++;devices.Items.Clear();devices.Items.AddRange(list.ToArray());
+                devices.SelectedItem=list.FirstOrDefault(d=>d.Serial==selected&&d.State=="device")??list.FirstOrDefault(d=>d.State=="device"&&!String.IsNullOrEmpty(id)&&d.HardwareId==id)??list.FirstOrDefault(d=>d.Serial==selected)??list.FirstOrDefault(d=>d.State=="device")??list.FirstOrDefault();
+                if(list.Count==0){appsLoading=false;apps.Clear();RenderApps();deviceInfo.Text="等待 USB / 无线 ADB";status.Text="等待手机连接 · 已配对无线设备将自动连接";}
+            }
             catch(Exception ex){if(!closeRequested&&!automatic)status.Text="连接检查失败："+ex.Message;}
             finally{refreshing=false;if(!IsDisposed)refresh.Enabled=true;}
-            if(closeRequested||IsDisposed)return;if(SelectedDevice!=null)await LoadApps();
+            if(closeRequested||IsDisposed)return;if(SelectedDevice!=null)await LoadApps();if(recoveryNotice.Length>0&&!IsDisposed)status.Text=recoveryNotice;
         }
         async Task LoadApps(){
             if(closeRequested)return;int generation=++loadGeneration;var device=SelectedDevice;appsLoading=device!=null&&device.State=="device";apps.Clear();RenderApps();if(device==null)return;if(device.State!="device"){deviceInfo.Text=device.State=="unauthorized"?"请在手机上允许 USB 调试。":"设备离线，请重新连接。";status.Text=deviceInfo.Text;return;}
+            if(device.Wireless&&String.IsNullOrEmpty(device.HardwareId)){appsLoading=false;RenderApps();status.Text="无线设备身份尚未确认，请稍候刷新后重试。";return;}
             status.Text="正在读取手机应用…";launch.Enabled=false;
-            try{await TaskLease.Recover(device.Serial);var appTask=Commands.Run(Paths.Scrcpy,new[]{"-s",device.Serial,"--list-apps"},45000);var modelTask=Commands.Adb(device.Serial,"shell","getprop","ro.product.model");var verTask=Commands.Adb(device.Serial,"shell","getprop","ro.build.version.release");await Task.WhenAll(appTask,modelTask,verTask);var r=await appTask;r.Ensure();var model=await modelTask;var version=await verTask;if(generation!=loadGeneration||IsDisposed||closeRequested)return;appsLoading=false;apps=AndroidApp.Parse(r.Combined).Where(a=>!a.System).ToList();prefs.Serial=device.Serial;deviceInfo.Text=model.Output.Trim()+"  ·  Android "+version.Output.Trim();RenderApps();status.Text="双击应用卡片打开窗口";}
+            try{await TaskLease.Recover(device.Serial,device.HardwareId);var appTask=Commands.Run(Paths.Scrcpy,new[]{"-s",device.Serial,"--list-apps"},45000);var modelTask=Commands.Adb(device.Serial,"shell","getprop","ro.product.model");var verTask=Commands.Adb(device.Serial,"shell","getprop","ro.build.version.release");await Task.WhenAll(appTask,modelTask,verTask);var r=await appTask;r.Ensure();var model=await modelTask;var version=await verTask;if(generation!=loadGeneration||IsDisposed||closeRequested)return;appsLoading=false;apps=AndroidApp.Parse(r.Combined).Where(a=>!a.System).ToList();prefs.Serial=device.Serial;prefs.DeviceId=device.HardwareId??"";deviceInfo.Text=model.Output.Trim()+"  ·  Android "+version.Output.Trim();RenderApps();status.Text="双击应用卡片打开窗口";}
             catch(Exception ex){if(generation==loadGeneration&&!closeRequested)status.Text="读取失败："+ex.Message;}
             finally{if(generation==loadGeneration&&!IsDisposed&&!closeRequested){appsLoading=false;RenderApps();}}
         }
         void RenderApps(){string selected=SelectedApp==null?prefs.Package:SelectedApp.Package;var view=AppCatalog.Select(apps,category,search.Text,prefs.Favorites);appList.EmptyTitle=appsLoading?"正在读取应用":apps.Count==0?"等待手机连接":"没有找到应用";appList.EmptyDetail=appsLoading?"正在为你的应用准备桌面空间。":apps.Count==0?"连接 USB 或无线 ADB 后，应用会自动出现在这里。":"试试其他关键词，或切换到全部应用。";appList.SetItems(view,prefs.Favorites,selected);catalogCount.Text=appsLoading?"正在读取…":String.Format("{0} / {1} 个应用",view.Count,apps.Count);UpdateLaunchButtons();}
-        void UpdateLaunchButtons(){var d=SelectedDevice;bool connected=d!=null&&d.State=="device"&&!appsLoading;if(launch!=null)launch.Enabled=connected&&SelectedApp!=null;}
+        void UpdateLaunchButtons(){var d=SelectedDevice;bool connected=d!=null&&d.State=="device"&&!appsLoading&&(!d.Wireless||!String.IsNullOrEmpty(d.HardwareId));if(launch!=null)launch.Enabled=connected&&SelectedApp!=null;}
         void LaunchSelected(){var a=SelectedApp;if(a!=null)Launch(a);}
         async void Launch(AndroidApp app,string captionOverride=null){
-            if(preview){status.Text="界面预览模式，不连接手机。";return;}var d=SelectedDevice;if(d==null||d.State!="device")return;string openingKey=d.Serial+"/"+app.Package;if(!openingSessions.Add(openingKey))return;try{string caption=captionOverride??(SelectedApp!=null&&SelectedApp.Package==app.Package&&!String.IsNullOrWhiteSpace(title.Text)?title.Text.Trim():WindowTitles.Get(app.Package,app.Name));WindowTitles.Save(app.Package,caption);var existing=sessions.FirstOrDefault(f=>!f.IsDisposed&&f.Serial==d.Serial&&f.Package==app.Package);if(existing!=null){if(existing.HasDisplayProfile(preset.SelectedIndex,orientation.SelectedIndex==1)){existing.UpdateTitle(caption,false);existing.RestoreFromTray();return;}await existing.StopAndClose();if(!existing.IsDisposed){status.Text="原任务尚未归还，请先恢复手机连接。";return;}if(IsDisposed||closeRequested)return;}if(!Commands.ValidPackage(app.Package)){status.Text="无效应用包名";return;}
-            prefs.Package=app.Package;SaveOptions();var form=new CastForm(d.Serial,app,caption,prefs.Preset,flex.Checked,audio.Checked,screenOff.Checked,clipboard.Checked,landscape:prefs.Landscape);sessions.Add(form);form.FormClosed+=(s,e)=>sessions.Remove(form);form.Show();status.Text="已打开 "+app.Name+" · 可继续选择其他应用";
+            if(!preview&&SelectedDevice!=null&&SelectedDevice.Wireless&&String.IsNullOrEmpty(SelectedDevice.HardwareId)){status.Text="请先等待无线设备身份核对完成。";return;}
+            if(preview){status.Text="界面预览模式，不连接手机。";return;}var d=SelectedDevice;if(d==null||d.State!="device")return;string openingKey=(d.HardwareId??d.Serial)+"/"+app.Package;if(!openingSessions.Add(openingKey))return;try{string caption=captionOverride??(SelectedApp!=null&&SelectedApp.Package==app.Package&&!String.IsNullOrWhiteSpace(title.Text)?title.Text.Trim():WindowTitles.Get(app.Package,app.Name));WindowTitles.Save(app.Package,caption);var existing=sessions.FirstOrDefault(f=>!f.IsDisposed&&f.MatchesDevice(d)&&f.Package==app.Package);if(existing!=null){if(existing.HasDisplayProfile(preset.SelectedIndex,orientation.SelectedIndex==1)){existing.UpdateTitle(caption,false);existing.RestoreFromTray();return;}await existing.StopAndClose();if(!existing.IsDisposed){status.Text="原任务尚未归还，请先恢复手机连接。";return;}if(IsDisposed||closeRequested)return;}if(!Commands.ValidPackage(app.Package)){status.Text="无效应用包名";return;}
+            prefs.Package=app.Package;SaveOptions();var form=new CastForm(d.Serial,app,caption,prefs.Preset,flex.Checked,audio.Checked,screenOff.Checked,clipboard.Checked,landscape:prefs.Landscape,deviceId:d.HardwareId,edgeAutoHide:edgeAutoHide.Checked);sessions.Add(form);form.FormClosed+=(s,e)=>sessions.Remove(form);form.Show();status.Text="已打开 "+app.Name+" · 可继续选择其他应用";
             }catch(Exception ex){if(!IsDisposed)status.Text="打开失败："+ex.Message;}finally{openingSessions.Remove(openingKey);}
         }
         MainCloseAction ChooseCloseAction(CloseReason reason){
@@ -115,10 +135,5 @@ namespace AppDeck {
     internal static class NativeHint {
         [System.Runtime.InteropServices.DllImport("user32.dll",CharSet=System.Runtime.InteropServices.CharSet.Unicode)]static extern IntPtr SendMessage(IntPtr h,uint m,IntPtr w,string l);
         public static void Set(TextBox box,string text){box.HandleCreated+=(s,e)=>SendMessage(box.Handle,0x1501,new IntPtr(1),text);}
-    }
-    internal sealed class WirelessDialog:ModernForm {
-        readonly Field address=new Field("例如 192.168.1.10:37521"),pairAddress=new Field("配对地址（端口与连接地址通常不同）"),code=new Field("六位配对码");readonly Label status=Theme.Hint("手机与电脑需位于同一网络。",9);
-        public WirelessDialog(){Text="无线连接";ClientSize=new Size(510,560);MinimumSize=new Size(510,560);StartPosition=FormStartPosition.CenterParent;var p=new FlowLayoutPanel{Dock=DockStyle.Fill,Padding=new Padding(26),FlowDirection=FlowDirection.TopDown,WrapContents=false};Body.Controls.Add(p);p.Controls.Add(Theme.Label("摆脱连接线",20,true));p.Controls.Add(Theme.Hint("在手机开发者选项中打开无线调试。"));p.Controls.Add(Theme.Label("连接地址",9));address.Width=438;p.Controls.Add(address);var connect=Theme.Button("连接手机",async(s,e)=>await Execute(false),true);connect.Margin=new Padding(0,10,0,24);p.Controls.Add(connect);p.Controls.Add(Theme.Label("首次使用 · 先通过配对码配对",10,true));pairAddress.Width=438;pairAddress.Margin=new Padding(0,0,0,10);p.Controls.Add(pairAddress);code.Width=180;code.Input.UseSystemPasswordChar=true;code.Input.MaxLength=6;p.Controls.Add(code);var pair=Theme.Button("配对",async(s,e)=>await Execute(true));pair.Margin=new Padding(0,10,0,12);p.Controls.Add(pair);status.MaximumSize=new Size(438,0);p.Controls.Add(status);}
-        async Task Execute(bool pair){string target=(pair?pairAddress.Input.Text:address.Input.Text).Trim();if(!Commands.ValidAddress(target)){status.Text="请输入有效的 地址:端口。";return;}if(pair&&!System.Text.RegularExpressions.Regex.IsMatch(code.Input.Text,@"^\d{6}$")){status.Text="请输入六位配对码。";return;}Enabled=false;try{var r=await Commands.Run(Paths.Adb,pair?new[]{"pair",target,code.Input.Text}:new[]{"connect",target},20000);status.Text=r.Combined.Trim();if(pair)code.Input.Clear();}catch(Exception ex){status.Text=ex.Message;}finally{Enabled=true;}}
     }
 }

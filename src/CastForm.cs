@@ -11,7 +11,9 @@ using System.Windows.Forms;
 
 namespace AppDeck {
     internal sealed class CastForm:ModernForm {
-        public readonly string Serial,Package;
+        public string Serial {get;private set;}
+        public readonly string Package,DeviceId;
+        string pendingSerial;
         readonly AndroidApp app;readonly bool flex,audio,autoOff,clipboard,landscape;
         readonly int preset;readonly Panel viewport=new Panel();readonly Label stateLabel=Theme.Label("正在连接…",9),placeholder=Theme.Label("正在打开应用副屏…",12);
         readonly System.Windows.Forms.Timer attachTimer=new System.Windows.Forms.Timer {Interval=100};
@@ -21,14 +23,20 @@ namespace AppDeck {
         readonly TaskLease lease;Process process;IntPtr video=IntPtr.Zero;int displayId=-1,videoWidth,videoHeight;bool closeAllowed,stopping,screenOwned;
         DateTime started;
         readonly System.Windows.Forms.Timer displayTimer=new System.Windows.Forms.Timer{Interval=2000};
-        Task configureTask,layoutTask;bool directionReady,layoutBusy,layoutUploaded;string directionWarning="";
+        Task configureTask,layoutTask,powerTask;bool directionReady,layoutBusy,layoutUploaded,powerChecked;string directionWarning="";
+        internal bool AutoWakeDisplay=true;
+        internal bool VideoReady {get{return ready;}}
+        internal int ActiveDisplay {get{return displayId;}}
+        internal int ReceivedFrames {get{return frameCount;}}
         readonly string remoteLayoutPath="/data/local/tmp/appdeck-layout-"+Guid.NewGuid().ToString("N")+".jar";
         NotifyIcon tray;ContextMenuStrip trayMenu;
         public bool HiddenToTray {get;private set;}
+        internal EdgeDockController EdgeDock {get;private set;}
+        protected override bool ShowWithoutActivation{get{return EdgeDock!=null&&EdgeDock.Revealing||base.ShowWithoutActivation;}}
         int frameCount,lifeVersion;bool ready,launching;Task<bool> stopTask;Task closeTask;
-        public CastForm(string serial,AndroidApp app,string title,int preset,bool flex,bool audio,bool autoOff,bool clipboard,bool preview=false,bool landscape=false){
+        public CastForm(string serial,AndroidApp app,string title,int preset,bool flex,bool audio,bool autoOff,bool clipboard,bool preview=false,bool landscape=false,string deviceId="",bool edgeAutoHide=true){
             this.preview=preview;this.landscape=landscape;
-            Serial=serial;Package=app.Package;lease=new TaskLease(serial,remoteLayoutPath);this.app=app;this.preset=preset;this.flex=flex;this.audio=audio;this.autoOff=autoOff;this.clipboard=clipboard;
+            Serial=serial;DeviceId=deviceId??"";Package=app.Package;lease=new TaskLease(serial,remoteLayoutPath,DeviceId);this.app=app;this.preset=preset;this.flex=flex;this.audio=audio;this.autoOff=autoOff;this.clipboard=clipboard;
             Text=title+" · AppDeck";Caption.Compact=true;
             Size resolution=DisplayProfile.Resolution(preset,landscape);int viewWidth=landscape?900:preset==3?560:438;ClientSize=new Size(viewWidth+8,(int)Math.Round(viewWidth*(double)resolution.Height/resolution.Width)+76);MinimumSize=new Size(330,300);StartPosition=FormStartPosition.CenterScreen;KeyPreview=true;
             string stamp=DateTime.Now.ToString("yyyyMMdd-HHmmss-fff");Directory.CreateDirectory(Path.Combine(Paths.Data,"logs"));logFile=Path.Combine(Paths.Data,"logs",stamp+"-"+Package+".log");
@@ -40,7 +48,9 @@ namespace AppDeck {
             offButton=new ToolStripMenuItem("手机锁屏",null,async(s,e)=>await ChangePower(false));menu.Items.Add(offButton);
             menu.Items.Add("修改窗口标题",null,(s,e)=>Rename());
             menu.Items.Add("快捷键",null,(s,e)=>{using(var d=new ShortcutDialog())d.ShowDialog(this);});
-            reconnect=new ToolStripMenuItem("重新连接",null,async(s,e)=>{if(await Stop()){stopping=false;await Start();}});menu.Items.Add(reconnect);
+            EdgeDock=new EdgeDockController(this,()=>menu.Visible||launching||stopping||closeAllowed||!preview&&!ready);
+            EdgeDock.Enabled=edgeAutoHide;
+            reconnect=new ToolStripMenuItem("重新连接",null,async(s,e)=>{try{if(await Stop()){if(pendingSerial!=null){lease.Rebind(pendingSerial);Serial=pendingSerial;pendingSerial=null;}stopping=false;await Start();}}catch(Exception ex){Theme.Error(this,ex);}});menu.Items.Add(reconnect);
             menu.Items.Add("切换主题",null,(s,e)=>{Theme.Set(!Theme.Dark);var settings=Preferences.Load();settings.Dark=Theme.Dark;if(!preview)settings.Save();});Theme.Menu(menu);
             viewport.Dock=DockStyle.Fill;viewport.Margin=Padding.Empty;
             placeholder.Dock=DockStyle.Fill;placeholder.TextAlign=ContentAlignment.MiddleCenter;placeholder.AutoSize=false;viewport.Controls.Add(placeholder);
@@ -57,6 +67,23 @@ namespace AppDeck {
         }
         void UpdatePin(){pin.Active=TopMost;pin.Hint(TopMost?"取消置顶":"置顶窗口");pin.Invalidate();}
         public bool HasDisplayProfile(int otherPreset,bool otherLandscape){return preset==otherPreset&&landscape==otherLandscape;}
+        public bool MatchesDevice(Device device){return device.SamePhone(Serial,DeviceId);}
+        public bool OfferConnection(Device device){
+            if(preview||IsDisposed||closeAllowed||!MatchesDevice(device)||device.State!="device"||launching)return false;
+            if(process!=null&&!process.HasExited)return false;
+            bool changed=pendingSerial!=device.Serial;pendingSerial=device.Serial;
+            if(!stopping){ShowReconnectHint();}return changed;
+        }
+        public void ConnectionUnavailable(){
+            if(pendingSerial==null)return;pendingSerial=null;
+            if(!stopping&&!launching&&(process==null||process.HasExited))ShowReconnectHint();
+        }
+        void ShowReconnectHint(){
+            placeholder.Visible=true;reconnect.Enabled=true;offButton.Enabled=false;
+            bool available=pendingSerial!=null;reconnect.Text=available?"恢复投屏":"重新连接";
+            placeholder.Text=available?"手机已重新连接\n点击更多 → 恢复投屏":"连接已结束\n恢复手机连接后重试";
+            stateLabel.Text=available?"手机已重新连接 · 点击更多 → 恢复投屏":"连接已结束 · 正在等待手机重新连接";
+        }
         void UI(Action action){if(IsDisposed||Disposing)return;try{BeginInvoke((Action)(()=>{if(!IsDisposed)action();}));}catch(InvalidOperationException){}}
         void Log(string text){
             lock(logLock){recent.AppendLine(text);if(recent.Length>18000)recent.Remove(0,recent.Length-12000);try{File.AppendAllText(logFile,DateTime.Now.ToString("HH:mm:ss.fff ")+text+Environment.NewLine,Encoding.UTF8);}catch{}}
@@ -65,8 +92,8 @@ namespace AppDeck {
             if(line==null)return;Log(line);UI(()=>{
                 if(process!=owner||stopping)return;
                 var d=Regex.Match(line,@"New display: (\d+)x(\d+)/\d+ \(id=(\d+)\)");
-                if(d.Success){videoWidth=Int32.Parse(d.Groups[1].Value);videoHeight=Int32.Parse(d.Groups[2].Value);displayId=Int32.Parse(d.Groups[3].Value);configureTask=ConfigureDisplay(lifeVersion);}
-                var t=Regex.Match(line,@"Texture: (\d+)x(\d+)");if(t.Success){videoWidth=Int32.Parse(t.Groups[1].Value);videoHeight=Int32.Parse(t.Groups[2].Value);frameCount++;}
+                if(d.Success){videoWidth=Int32.Parse(d.Groups[1].Value);videoHeight=Int32.Parse(d.Groups[2].Value);displayId=Int32.Parse(d.Groups[3].Value);stateLabel.Text="手机已连接 · 正在准备应用副屏…";configureTask=ConfigureDisplay(lifeVersion);}
+                var t=Regex.Match(line,@"Texture: (\d+)x(\d+)");if(t.Success){videoWidth=Int32.Parse(t.Groups[1].Value);videoHeight=Int32.Parse(t.Groups[2].Value);frameCount++;if(!ready){attachTimer.Interval=100;attachTimer.Start();}}
                 if(line.IndexOf("ERROR:",StringComparison.Ordinal)>=0)stateLabel.Text=line;
                 WriteStatus();
             });
@@ -75,12 +102,14 @@ namespace AppDeck {
             if(preview||launching||IsDisposed||closeAllowed)return;
             if(process!=null&&!process.HasExited)return;
             launching=true;stopping=false;stopTask=null;int version=++lifeVersion;
-            displayId=-1;video=IntPtr.Zero;ready=false;directionReady=false;directionWarning="";configureTask=null;frameCount=0;reconnect.Enabled=false;offButton.Enabled=false;
+            attachTimer.Interval=100;
+            reconnect.Text="重新连接";
+            displayId=-1;video=IntPtr.Zero;ready=false;directionReady=false;directionWarning="";configureTask=null;powerTask=null;powerChecked=false;frameCount=0;reconnect.Enabled=false;offButton.Enabled=false;
             placeholder.Visible=true;placeholder.Text="正在打开 "+app.Name+"…";stateLabel.Text="正在连接手机…";
             try{
                 var probe=await Commands.Adb(Serial,"get-state");probe.Ensure();if(probe.Output.Trim()!="device")throw new Exception("设备未连接，请重新连接后点击“重连”。");
                 if(version!=lifeVersion||stopping||IsDisposed)return;
-                await TaskLease.Recover(Serial);
+                await TaskLease.Recover(Serial,DeviceId);
                 var helper=await Commands.Adb(Serial,"push",Path.Combine(Paths.Runtime,"appdeck-layout.jar"),remoteLayoutPath);helper.Ensure();layoutUploaded=true;
                 if(version!=lifeVersion||stopping||IsDisposed)return;
                 string size=flex?(Math.Max(1,viewport.ClientSize.Width)+"x"+Math.Max(1,viewport.ClientSize.Height)+"/160"):DisplayProfile.Argument(preset,landscape);
@@ -93,7 +122,7 @@ namespace AppDeck {
                 var p=new Process {StartInfo=Commands.Info(Paths.Scrcpy,args),EnableRaisingEvents=true};
                 p.OutputDataReceived+=(s,e)=>Receive(p,e.Data);p.ErrorDataReceived+=(s,e)=>Receive(p,e.Data);
                 p.Exited+=(s,e)=>{try{Log("scrcpy exit code: "+p.ExitCode);}catch{}UI(async()=>{if(process!=p||stopping)return;reconnect.Enabled=false;await Stop();if(IsDisposed||closeAllowed)return;
-                    placeholder.Visible=true;placeholder.Text="连接已结束\n点击“重连”重新打开";stateLabel.Text="连接已结束 · 点击更多 → 重新连接";reconnect.Enabled=true;offButton.Enabled=false;
+                    stopping=false;ShowReconnectHint();
                 });};
                 process=p;started=DateTime.UtcNow;Log("AppDeck session; package="+Package+"; serial="+Serial+"; preset="+size+"; flex="+flex);
                 p.Start();p.BeginOutputReadLine();p.BeginErrorReadLine();attachTimer.Start();
@@ -103,6 +132,7 @@ namespace AppDeck {
         }
         async void AttachTick(){
             if(process==null||process.HasExited){attachTimer.Stop();return;}
+            if(AutoWakeDisplay&&!powerChecked&&directionReady&&frameCount==0&&(DateTime.UtcNow-started).TotalSeconds>=3){int version=lifeVersion;powerChecked=true;powerTask=WakeVirtualDisplay();await powerTask;if(IsDisposed||stopping||version!=lifeVersion)return;}
             // scrcpy creates its SDL HWND hidden, before a frame has initialized content_size.
             // Forcing it visible or resizing it here can trigger a divide-by-zero in screen.c.
             // Wait for both the texture log and scrcpy's own ShowWindow before taking ownership.
@@ -117,7 +147,12 @@ namespace AppDeck {
                 ready=true;placeholder.Visible=false;offButton.Enabled=true;reconnect.Enabled=true;WriteStatus();FocusVideo();
                 if(autoOff)await ChangePower(false);
             }
-            if(!ready&&(DateTime.UtcNow-started).TotalSeconds>30){attachTimer.Stop();placeholder.Text="打开耗时较长，请检查手机与应用状态。\n可点击“重连”，诊断日志位于 data/logs。";reconnect.Enabled=true;}
+            if(!ready&&(DateTime.UtcNow-started).TotalSeconds>30){attachTimer.Interval=500;placeholder.Text=directionReady?"手机已连接，应用已在副屏运行，\n但视频首帧尚未到达。\n正在继续等待，也可点击更多 → 重新连接。":"打开耗时较长，请检查手机与应用状态。\n可点击“重连”，诊断日志位于 data/logs。";stateLabel.Text=directionReady?"等待视频首帧 · 可重新连接":"应用副屏准备超时";reconnect.Enabled=true;}
+        }
+        internal async Task WakeVirtualDisplay(){
+            int version=lifeVersion;if(!Current(version))return;
+            try{var result=await Commands.Adb(Serial,"shell","CLASSPATH="+remoteLayoutPath,"app_process","/","DisplayPower",displayId.ToString());result.Ensure();Log("Virtual display power: "+result.Output.Trim());if(Current(version)&&!ready)stateLabel.Text="副屏电源正常 · 正在等待画面…";}
+            catch(Exception ex){Log("Virtual display power: "+ex.Message);}
         }
         void FitVideo(){if(video!=IntPtr.Zero&&Native.IsWindow(video)&&Native.GetParent(video)==viewport.Handle)Native.MoveWindow(video,0,0,Math.Max(1,viewport.ClientSize.Width),Math.Max(1,viewport.ClientSize.Height),true);}
         void FocusVideo(){if(video!=IntPtr.Zero&&Native.IsWindow(video))Native.SetFocus(video);}
@@ -148,6 +183,7 @@ namespace AppDeck {
             var field=new Field("窗口标题"){Location=new Point(20,20),Width=320};var t=field.Input;t.Text=Text.EndsWith(" · AppDeck",StringComparison.Ordinal)?Text.Substring(0,Text.Length-10):Text;t.MaxLength=100;var ok=Theme.Button("保存",(s,e)=>{if(!String.IsNullOrWhiteSpace(t.Text)){try{UpdateTitle(t.Text.Trim());d.Close();}catch(Exception ex){Theme.Error(d,ex);}}},true);ok.Location=new Point(220,80);d.Body.Controls.Add(field);d.Body.Controls.Add(ok);d.AcceptButton=ok;d.ShowDialog(this);}}
         public void HideToTray(){
             if(IsDisposed||!Enabled||HiddenToTray)return;
+            EdgeDock.PrepareForInteraction();
             if(tray==null){
                 trayMenu=new ContextMenuStrip();trayMenu.Items.Add("显示窗口",null,(s,e)=>RestoreFromTray());trayMenu.Items.Add("关闭窗口",null,async(s,e)=>await StopAndClose());Theme.Menu(trayMenu);
                 tray=new NotifyIcon{Icon=Icon,ContextMenuStrip=trayMenu};tray.DoubleClick+=(s,e)=>RestoreFromTray();
@@ -159,6 +195,7 @@ namespace AppDeck {
         }
         public void RestoreFromTray(){
             if(IsDisposed)return;HiddenToTray=false;if(tray!=null)tray.Visible=false;
+            EdgeDock.PrepareForInteraction();
             if(WindowState==FormWindowState.Minimized)WindowState=FormWindowState.Normal;
             Show();Activate();FitVideo();FocusVideo();Shortcuts.Touch(this);Log("Restored; handle="+Handle);
         }
@@ -187,7 +224,7 @@ namespace AppDeck {
                 if(!Current(version))return;
                 Log(await lease.Acquire(displayId,Package,component.Groups[1].Value));
                 if(!Current(version))return;await FitAppTasks(version,true);
-                if(!Current(version))return;directionReady=true;displayTimer.Start();
+                if(!Current(version))return;directionReady=true;stateLabel.Text="应用已启动 · 正在等待画面…";displayTimer.Start();
             }catch(Exception ex){Log("Launch: "+ex.Message);if(Current(version)){
                 string error=ex.Message;attachTimer.Stop();
                 // Schedule rollback after ConfigureDisplay completes; Stop waits for this task.
@@ -216,6 +253,7 @@ namespace AppDeck {
             stopping=true;lifeVersion++;attachTimer.Stop();displayTimer.Stop();ready=false;
             if(configureTask!=null){try{await configureTask;}catch{}}
             if(layoutTask!=null){try{await layoutTask;}catch{}}
+            if(powerTask!=null){try{await powerTask;}catch{}}
             // Return tasks below the phone's current foreground before removing the display.
             // If return fails while scrcpy is alive, keep the session instead of losing a page.
             try{Log(await lease.Return());}

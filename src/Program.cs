@@ -10,9 +10,13 @@ namespace AppDeck {
             Environment.SetEnvironmentVariable("ADB",Paths.Adb,EnvironmentVariableTarget.Process);
             Environment.SetEnvironmentVariable("APPDECK_INPUT_CONFIG",InputSettings.FilePath,EnvironmentVariableTarget.Process);
             if(args.Contains("--self-test"))return SelfTest();
+            if(args.Contains("--check-wireless"))return CheckWireless();
             if(args.Length==2&&args[0]=="--check-catalog")return CheckCatalog(args[1]);
             Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
             if(args.Length==2&&args[0]=="--render-ui")return UIPreview.Render(args[1]);
+            if(args.Length==2&&args[0]=="--check-edge-dock")return EdgeDockChecks.Desktop(args[1]);
+            if(args.Contains("--edge-test-child"))return EdgeDockChecks.Child();
+            if(args.Length==4&&args[0]=="--check-cast")return CastChecks.Live(args[1],args[2],args[3]);
             Theme.Set(Preferences.Load().Dark);
             Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException);
             Application.ThreadException+=(s,e)=>Theme.Error(null,e.Exception);
@@ -39,7 +43,9 @@ namespace AppDeck {
                 string stacks="RootTask id=1 bounds=[0,0][1272,2772] displayId=0 userId=0\n  taskId=2: home bounds=[0,0][500,500] visible=true\nRootTask id=10 bounds=[0,0][900,900] displayId=23 userId=0\n  taskId=10: com.tencent.mm/a bounds=[0,0][900,900] visible=true\n  taskId=11: app/a bounds=[0,0][1920,1080] visible=true\n  taskId=12: app/b bounds=[0,0][300,300] visible=false\nRootTask id=99 bounds=[0,0][300,300] displayId=24 userId=0\n  taskId=99: app/c bounds=[0,0][300,300] visible=true";
                 if(!DisplayTasks.NeedingResize(stacks,23,new System.Drawing.Size(1920,1080)).SequenceEqual(new[]{10})||DisplayTasks.NeedingResize(stacks,0,new System.Drawing.Size(1920,1080)).Any())throw new Exception("virtual-display task isolation");
                 if(!File.Exists(Paths.Scrcpy)||!File.Exists(Paths.Adb)||!File.Exists(Path.Combine(Paths.Runtime,"appdeck-layout.jar")))throw new Exception("runtime missing");
-                File.WriteAllText(Path.Combine(Paths.Data,"self-test.txt"),"PASS: app/device parsing, system app exclusion (all/search/favorites), catalog search/categories, argument escaping, endpoint validation, package validation, main close action validation, 8 display size/orientation combinations, virtual-display task isolation (main/other/hidden/already-sized tasks excluded), bundled runtime\r\n",Encoding.UTF8);
+                WirelessChecks.Run();
+                EdgeDockChecks.Geometry();
+                File.WriteAllText(Path.Combine(Paths.Data,"self-test.txt"),"PASS: app/device parsing, system app exclusion (all/search/favorites), catalog search/categories, argument escaping, endpoint validation, package validation, main close action validation, 8 display size/orientation combinations, virtual-display task isolation (main/other/hidden/already-sized tasks excluded), bundled runtime; wireless discovery, pairing via stdin, remembered reconnect with changed endpoints, retry throttling, identity and journal isolation, failure handling and coalesced scans; edge docking geometry and working-area boundaries\r\n",Encoding.UTF8);
                 return 0;
             } catch(Exception ex) {File.WriteAllText(Path.Combine(Paths.Data,"self-test.txt"),ex.ToString()); return 1;}
         }
@@ -54,6 +60,13 @@ namespace AppDeck {
                 string report="PASS: live device catalog\r\nLaunchable packages: "+apps.Count+"\r\nVisible user apps: "+all.Count+"\r\nExcluded system apps: "+apps.Count(a=>a.System)+"\r\nWeChat package search: "+wx.Count+"\r\nReading apps: "+AppCatalog.Select(apps,1,"",favorites).Count+"\r\nSystem package search: "+AppCatalog.Select(apps,0,"com.android.settings",favorites).Count+"\r\n";
                 File.WriteAllText(Path.Combine(Paths.Data,"catalog-check.txt"),report,Encoding.UTF8);return 0;
             }catch(Exception ex){File.WriteAllText(Path.Combine(Paths.Data,"catalog-check.txt"),ex.ToString());return 1;}
+        }
+        static int CheckWireless(){
+            try{
+                var monitor=new WirelessMonitor();monitor.Refresh().GetAwaiter().GetResult();
+                string report="Wireless discovery: "+(monitor.DiscoveryError.Length==0?"OK":monitor.DiscoveryError)+"\r\nNearby phones: "+monitor.Nearby().Count+"\r\nPairing services: "+monitor.Services.Count(s=>s.Pairing)+"\r\nConnection services: "+monitor.Services.Count(s=>!s.Pairing)+"\r\nConnected wireless devices: "+monitor.Devices.Count(d=>d.Wireless&&d.State=="device")+"\r\nVerified wireless identities: "+monitor.Devices.Count(d=>d.Wireless&&d.State=="device"&&!String.IsNullOrEmpty(d.HardwareId))+"\r\n";
+                File.WriteAllText(Path.Combine(Paths.Data,"wireless-check.txt"),report,Encoding.UTF8);return monitor.DiscoveryError.Length==0?0:1;
+            }catch(Exception ex){File.WriteAllText(Path.Combine(Paths.Data,"wireless-check.txt"),ex.Message,Encoding.UTF8);return 1;}
         }
     }
 }

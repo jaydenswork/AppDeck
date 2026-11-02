@@ -59,10 +59,12 @@ namespace AppDeck {
             // once for this process only, so scrcpy and adb inherit the same executable choice.
             return p;
         }
-        public static async Task<Result> Run(string exe, IEnumerable<string> args, int timeout = 20000) {
+        public static async Task<Result> Run(string exe, IEnumerable<string> args, int timeout = 20000, string input = null) {
             using (var p = new Process { StartInfo = Info(exe, args) }) {
+                p.StartInfo.RedirectStandardInput=input!=null;
                 p.Start();
                 var stdout = p.StandardOutput.ReadToEndAsync(); var stderr = p.StandardError.ReadToEndAsync();
+                if(input!=null){await p.StandardInput.WriteAsync(input);p.StandardInput.Close();}
                 var wait = Task.Run(() => p.WaitForExit());
                 if (await Task.WhenAny(wait, Task.Delay(timeout)) != wait) {
                     try { p.Kill(); } catch { }
@@ -87,7 +89,9 @@ namespace AppDeck {
         }
     }
     internal sealed class Device {
-        public string Serial, Model, State;
+        public string Serial, Model, State, TransportId, HardwareId;
+        public bool Wireless {get{return Commands.ValidAddress(Serial)||Serial.Contains("._adb-tls-connect._tcp");}}
+        public bool SamePhone(string serial,string id){return !String.IsNullOrEmpty(id)?HardwareId==id:Serial==serial;}
         public override string ToString() { return Model + " · " + Serial + (State == "device" ? "" : " · " + State); }
         public static List<Device> Parse(string s) {
             var list = new List<Device>();
@@ -95,8 +99,10 @@ namespace AppDeck {
                 var m = Regex.Match(line.Trim(), @"^(\S+)\s+(device|unauthorized|offline)\b(.*)$");
                 if (!m.Success) continue;
                 var model = Regex.Match(m.Groups[3].Value, @"\bmodel:(\S+)");
-                list.Add(new Device { Serial = m.Groups[1].Value, State = m.Groups[2].Value,
-                    Model = model.Success ? model.Groups[1].Value.Replace('_',' ') : "Android" });
+                string serial=m.Groups[1].Value;var transport=Regex.Match(m.Groups[3].Value,@"\btransport_id:(\d+)");
+                var device=new Device { Serial = serial, State = m.Groups[2].Value, TransportId=transport.Groups[1].Value,
+                    Model = model.Success ? model.Groups[1].Value.Replace('_',' ') : "Android" };
+                if(!device.Wireless)device.HardwareId=serial;list.Add(device);
             }
             return list;
         }
@@ -130,25 +136,27 @@ namespace AppDeck {
         public static string Description(int preset,bool landscape){var size=Resolution(preset,landscape);return names[Math.Max(0,Math.Min(3,preset))]+"  ·  "+size.Width+" × "+size.Height;}
     }
     internal sealed class Preferences {
-        public string Serial = "", Package = "com.tencent.mm"; public int Preset = 0;
+        public string Serial = "", DeviceId = "", Package = "com.tencent.mm"; public int Preset = 0;
         public bool Flex, Audio, ScreenOff, Clipboard, Dark, Landscape; public int MainCloseAction;
+        public bool EdgeAutoHide=true;
         public HashSet<string> Favorites = new HashSet<string> { "com.tencent.mm" };
         public static int NormalizeMainCloseAction(int value) { return value>=0&&value<=2?value:0; }
         public static Preferences Load() {
             try {
                 var x = XElement.Load(Path.Combine(Paths.Data, "settings.xml"));
-                return new Preferences { Serial = (string)x.Element("serial") ?? "", Package = (string)x.Element("package") ?? "com.tencent.mm",
+                return new Preferences { Serial = (string)x.Element("serial") ?? "", DeviceId=(string)x.Element("deviceId")??"", Package = (string)x.Element("package") ?? "com.tencent.mm",
                     Preset = (int?)x.Element("preset") ?? 0, Flex = (bool?)x.Element("flex") ?? false,
                     Audio = (bool?)x.Element("audio") ?? false, ScreenOff = (bool?)x.Element("screenOff") ?? false,
                     Clipboard = (bool?)x.Element("clipboard") ?? false, Dark = (bool?)x.Element("dark") ?? false, Landscape = (bool?)x.Element("landscape") ?? false,
+                    EdgeAutoHide=(bool?)x.Element("edgeAutoHide")??true,
                     MainCloseAction = NormalizeMainCloseAction((int?)x.Element("mainCloseAction") ?? 0),
                     Favorites = new HashSet<string>(x.Elements("favorite").Select(e => e.Value)) };
             } catch { return new Preferences(); }
         }
         public void Save() {
             Directory.CreateDirectory(Paths.Data);
-            var x = new XElement("settings", new XElement("serial", Serial), new XElement("package", Package), new XElement("preset", Preset),
-                new XElement("flex", Flex), new XElement("audio", Audio), new XElement("screenOff", ScreenOff), new XElement("clipboard", Clipboard), new XElement("dark", Dark), new XElement("landscape", Landscape), new XElement("mainCloseAction", NormalizeMainCloseAction(MainCloseAction)),
+            var x = new XElement("settings", new XElement("serial", Serial), new XElement("deviceId",DeviceId), new XElement("package", Package), new XElement("preset", Preset),
+                new XElement("flex", Flex), new XElement("audio", Audio), new XElement("screenOff", ScreenOff), new XElement("clipboard", Clipboard), new XElement("edgeAutoHide",EdgeAutoHide), new XElement("dark", Dark), new XElement("landscape", Landscape), new XElement("mainCloseAction", NormalizeMainCloseAction(MainCloseAction)),
                 Favorites.Select(f => new XElement("favorite", f)));
             string temp = Path.Combine(Paths.Data, "settings.xml.tmp"), dest = Path.Combine(Paths.Data, "settings.xml");
             x.Save(temp); if (File.Exists(dest)) File.Replace(temp, dest, null); else File.Move(temp, dest);

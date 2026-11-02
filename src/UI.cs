@@ -28,10 +28,12 @@ namespace AppDeck {
         public static Label Label(string text,float size=10,bool bold=false){var l=new Label{Text=text,AutoSize=true,Font=Font(size,bold),Margin=new Padding(0,0,0,8),BackColor=Color.Transparent};Watch(l,()=>l.ForeColor=Ink);return l;}
         public static Label Hint(string text,float size=9){var l=Label(text,size);Watch(l,()=>l.ForeColor=Muted);return l;}
         public static void Error(IWin32Window owner,Exception ex){MessageBox.Show(owner,ex.Message,"AppDeck",MessageBoxButtons.OK,MessageBoxIcon.Warning);}
-        public static void Menu(ContextMenuStrip menu){Watch(menu,()=>{menu.BackColor=Surface;menu.ForeColor=Ink;menu.Renderer=new MenuRenderer();menu.Font=Font(9);menu.ShowImageMargin=false;menu.Padding=new Padding(5);foreach(ToolStripItem i in menu.Items){i.ForeColor=Ink;i.Padding=new Padding(10,5,10,5);}});}
+        public static void Menu(ContextMenuStrip menu){Watch(menu,()=>{menu.BackColor=Surface;menu.ForeColor=Ink;menu.Renderer=new MenuRenderer();menu.Font=Font(9);menu.ShowImageMargin=false;menu.ShowCheckMargin=false;menu.Padding=new Padding(5);foreach(ToolStripItem i in menu.Items){i.ForeColor=Ink;i.Padding=new Padding(10,5,10,5);i.TextAlign=ContentAlignment.MiddleLeft;}});}
         sealed class MenuRenderer:ToolStripProfessionalRenderer {
             public MenuRenderer():base(new MenuColors()){RoundedEdges=false;}
-            protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e){e.TextColor=e.Item.Enabled?Ink:Muted;base.OnRenderItemText(e);}
+            protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e){e.TextColor=e.Item.Enabled?Ink:Muted;e.TextRectangle=new Rectangle(e.TextRectangle.Left,0,e.TextRectangle.Width,e.Item.Height);e.TextFormat=(e.TextFormat&~TextFormatFlags.Bottom)|TextFormatFlags.VerticalCenter|TextFormatFlags.SingleLine;base.OnRenderItemText(e);}
+            protected override void OnRenderImageMargin(ToolStripRenderEventArgs e){using(var brush=new SolidBrush(Surface))e.Graphics.FillRectangle(brush,e.AffectedBounds);}
+            protected override void OnRenderItemCheck(ToolStripItemImageRenderEventArgs e){var r=e.ImageRectangle;PaintKit.Fill(e.Graphics,r,AccentSoft,3);PaintKit.Icon(e.Graphics,"check",r,e.Item.Enabled?Accent:Muted);}
         }
         sealed class MenuColors:ProfessionalColorTable {
             public override Color MenuItemSelected{get{return AccentSoft;}}
@@ -40,6 +42,12 @@ namespace AppDeck {
             public override Color MenuBorder{get{return Line;}}
             public override Color SeparatorDark{get{return Line;}}
             public override Color SeparatorLight{get{return Line;}}
+            public override Color ImageMarginGradientBegin{get{return Surface;}}
+            public override Color ImageMarginGradientMiddle{get{return Surface;}}
+            public override Color ImageMarginGradientEnd{get{return Surface;}}
+            public override Color CheckBackground{get{return AccentSoft;}}
+            public override Color CheckSelectedBackground{get{return AccentSoft;}}
+            public override Color CheckPressedBackground{get{return AccentSoft;}}
         }
     }
     internal static class PaintKit {
@@ -120,7 +128,7 @@ namespace AppDeck {
         public ScrollArea(){DoubleBuffered=true;SetStyle(ControlStyles.ResizeRedraw,true);Theme.Watch(this,()=>{BackColor=Theme.Surface;Invalidate();});}
         int MaxScroll{get{return Content==null?0:Math.Max(0,Content.Height-ClientSize.Height);}}
         protected override void OnLayout(LayoutEventArgs e){base.OnLayout(e);if(arranging||Content==null)return;arranging=true;using(var g=CreateGraphics())scale=g.DpiX/96;int width=Math.Max(1,ClientSize.Width-(int)(15*scale));Content.Width=width;foreach(Control c in Content.Controls)if(!c.AutoSize)c.Width=width;offset=Math.Min(offset,MaxScroll);Content.Location=new Point(0,-offset);arranging=false;Invalidate();}
-        void ScrollTo(int value){offset=Math.Max(0,Math.Min(MaxScroll,value));if(Content!=null)Content.Top=-offset;Invalidate();}
+        internal void ScrollTo(int value){offset=Math.Max(0,Math.Min(MaxScroll,value));if(Content!=null)Content.Top=-offset;Invalidate();}
         protected override void OnMouseWheel(MouseEventArgs e){ScrollTo(offset-e.Delta/120*(int)(45*scale));base.OnMouseWheel(e);}
         protected override void OnMouseDown(MouseEventArgs e){base.OnMouseDown(e);if(MaxScroll>0&&e.X>Width-14*scale){drag=true;Capture=true;ScrollTo((int)((float)e.Y/Math.Max(1,Height)*MaxScroll));}}
         protected override void OnMouseMove(MouseEventArgs e){base.OnMouseMove(e);if(drag)ScrollTo((int)((float)e.Y/Math.Max(1,Height)*MaxScroll));}

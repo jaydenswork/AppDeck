@@ -1,5 +1,6 @@
 /data/
 /AppDeck.exe
+/AppDeck-Fixed.exe
 /FILE_HASHES.json
 *.pdb
 /wheel-test.exe

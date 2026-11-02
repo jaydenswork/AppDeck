@@ -76,9 +76,14 @@ public final class TaskSession {
     }
     static Object createBridge(int display,int mode)throws Exception{
         Object organizer=organizerType.getConstructor().newInstance(),cookie=Class.forName("android.os.Binder").getConstructor().newInstance();
-        organizerType.getMethod("createRootTask",int.class,int.class,Class.forName("android.os.IBinder"),boolean.class).invoke(organizer,display,mode,cookie,false);
+        createRoot(organizer,display,mode,cookie);
         for(Object task:roots())if(((List<?>)field(task,"launchCookies")).contains(cookie))return task;
         throw new IllegalStateException("Cannot create transfer container");
+    }
+    static void createRoot(Object organizer,int display,int mode,Object cookie)throws Exception{
+        Class<?> binder=Class.forName("android.os.IBinder");
+        try{organizerType.getMethod("createRootTask",int.class,int.class,binder,boolean.class).invoke(organizer,display,mode,cookie,false);}
+        catch(NoSuchMethodException e){organizerType.getMethod("createRootTask",int.class,int.class,binder).invoke(organizer,display,mode,cookie);}
     }
     static void cleanEntryBridge()throws Exception{
         Object bridge=root(value("entryBridge",-1));if(bridge==null)return;
@@ -178,7 +183,7 @@ public final class TaskSession {
             StringJoiner ids=new StringJoiner(",");for(Object t:tasks)ids.add(Integer.toString(number(t,"taskId")));state.setProperty("returning",ids.toString());save();
             if(bridge==null){
                 Object cookie=Class.forName("android.os.Binder").getConstructor().newInstance();
-                organizerType.getMethod("createRootTask",int.class,int.class,Class.forName("android.os.IBinder"),boolean.class).invoke(organizer,0,1,cookie,false);
+                createRoot(organizer,0,1,cookie);
                 for(Object t:roots())if(((List<?>)field(t,"launchCookies")).contains(cookie)){bridge=t;break;}
                 if(bridge==null)throw new IllegalStateException("Cannot create background return container");
                 state.setProperty("bridge",Integer.toString(number(bridge,"taskId")));save();
