@@ -22,7 +22,7 @@ namespace AppDeck {
         readonly HashSet<string> openingSessions=new HashSet<string>();
         readonly string[] startupArgs;readonly bool preview;
         List<AndroidApp> apps=new List<AndroidApp>();Button refresh,launch;IconButton favorite,themeButton;NotifyIcon tray;ContextMenuStrip trayMenu;int category,loadGeneration;
-        bool refreshing,closing,closeRequested,appsLoading,hiddenToTray,forceExit;string deviceSignature="",catalogError="";
+        bool refreshing,closing,closeRequested,appsLoading,hiddenToTray,forceExit;string deviceSignature="",catalogError="",catalogDevice="";
         public MainForm(string[] args){
             startupArgs=args;preview=args.Contains("--preview");Text="AppDeck";ClientSize=new Size(1200,800);MinimumSize=new Size(1050,740);StartPosition=FormStartPosition.CenterScreen;KeyPreview=true;
             themeButton=Caption.AddAction(Theme.Dark?"sun":"moon","切换亮色 / 暗色",(s,e)=>ToggleTheme());
@@ -103,16 +103,31 @@ namespace AppDeck {
             if(closeRequested||IsDisposed)return;if(SelectedDevice!=null)await LoadApps();if(recoveryNotice.Length>0&&!IsDisposed)status.Text=recoveryNotice;
         }
         async Task LoadApps(){
-            if(closeRequested)return;catalogError="";int generation=++loadGeneration;var device=SelectedDevice;appsLoading=device!=null&&device.State=="device";apps.Clear();RenderApps();if(device==null)return;if(device.State!="device"){deviceInfo.Text=device.State=="unauthorized"?"请在手机上允许 USB 调试。":"设备离线，请重新连接。";status.Text=deviceInfo.Text;return;}
-            if(device.Wireless&&String.IsNullOrEmpty(device.HardwareId)){appsLoading=false;RenderApps();status.Text="无线设备身份尚未确认，请稍候刷新后重试。";return;}
-            status.Text="正在读取手机应用…";launch.Enabled=false;
-            try{await TaskLease.Recover(device.Serial,device.HardwareId);var appTask=Commands.Run(Paths.Scrcpy,new[]{"-s",device.Serial,"--list-apps"},45000);var modelTask=Commands.Adb(device.Serial,"shell","getprop","ro.product.model");var verTask=Commands.Adb(device.Serial,"shell","getprop","ro.build.version.release");await Task.WhenAll(appTask,modelTask,verTask);var r=await appTask;r.Ensure();var model=await modelTask;var version=await verTask;if(generation!=loadGeneration||IsDisposed||closeRequested)return;appsLoading=false;apps=AndroidApp.Parse(r.Combined).Where(a=>!a.System).ToList();prefs.Serial=device.Serial;prefs.DeviceId=device.HardwareId??"";deviceInfo.Text=model.Output.Trim()+"  ·  Android "+version.Output.Trim();RenderApps();LoadIcons(device,apps,generation);status.Text="双击应用卡片打开窗口";}
-            catch(Exception ex){if(generation==loadGeneration&&!closeRequested){catalogError=ex.Message;status.Text="读取失败："+ex.Message;}}
+            if(closeRequested)return;catalogError="";int generation=++loadGeneration;var device=SelectedDevice;
+            if(device==null||device.State!="device"){
+                appsLoading=false;apps.Clear();catalogDevice="";RenderApps();
+                if(device!=null){deviceInfo.Text=device.State=="unauthorized"?"请在手机上允许 USB 调试。":"设备离线，请重新连接。";status.Text=deviceInfo.Text;}return;
+            }
+            if(device.Wireless&&String.IsNullOrEmpty(device.HardwareId)){appsLoading=false;apps.Clear();RenderApps();status.Text="无线设备身份尚未确认，请稍候刷新后重试。";return;}
+            string key=DeviceCache.Folder(device);var cached=DeviceCache.ReadCatalog(device);
+            if(cached.Count>0)apps=cached;else if(catalogDevice!=key)apps.Clear();catalogDevice=key;
+            appsLoading=true;AppIcons.AssignCached(device,apps);RenderApps();status.Text=apps.Count>0?"已显示本地应用，正在同步手机列表…":"正在读取手机应用…";
+            try{
+                await TaskLease.Recover(device.Serial,device.HardwareId);
+                var appTask=Commands.Run(Paths.Scrcpy,new[]{"-s",device.Serial,"--list-apps"},45000);
+                var modelTask=Commands.Adb(device.Serial,"shell","getprop","ro.product.model");var verTask=Commands.Adb(device.Serial,"shell","getprop","ro.build.version.release");
+                await Task.WhenAll(appTask,modelTask,verTask);var r=await appTask;r.Ensure();var model=await modelTask;var version=await verTask;
+                if(generation!=loadGeneration||IsDisposed||closeRequested)return;
+                var catalog=AndroidApp.Parse(r.Combined);if(catalog.Count==0)throw new Exception("未读取到应用列表，请稍后刷新。");
+                apps=catalog.Where(a=>!a.System).ToList();AppIcons.AssignCached(device,apps);DeviceCache.SaveCatalog(device,apps);
+                prefs.Serial=device.Serial;prefs.DeviceId=device.HardwareId??"";deviceInfo.Text=model.Output.Trim()+"  ·  Android "+version.Output.Trim();
+                appsLoading=false;RenderApps();LoadIcons(device,apps,generation);status.Text="双击应用卡片打开窗口";
+            }catch(Exception ex){if(generation==loadGeneration&&!closeRequested){catalogError=ex.Message;status.Text="读取失败："+ex.Message;}}
             finally{if(generation==loadGeneration&&!IsDisposed&&!closeRequested){appsLoading=false;RenderApps();}}
         }
-        void RenderApps(){string selected=SelectedApp==null?prefs.Package:SelectedApp.Package;var view=AppCatalog.Select(apps,category,search.Text,prefs.Favorites);appList.Loading=appsLoading;appList.EmptyTitle=catalogError.Length>0?"暂时无法读取应用":appsLoading?"正在读取应用":apps.Count==0?"等待手机连接":"没有找到应用";appList.EmptyDetail=catalogError.Length>0?"请检查手机连接，然后点击设备栏的刷新按钮重试。":appsLoading?"正在为你的应用准备桌面空间。":apps.Count==0?"连接 USB 或无线 ADB 后，应用会自动出现在这里。":"试试其他关键词，或切换到全部应用。";appList.SetItems(view,prefs.Favorites,selected);catalogCount.Text=appsLoading?"正在读取…":String.Format("{0} / {1} 个应用",view.Count,apps.Count);UpdateLaunchButtons();}
+        void RenderApps(){string selected=SelectedApp==null?prefs.Package:SelectedApp.Package;var view=AppCatalog.Select(apps,category,search.Text,prefs.Favorites);appList.Loading=appsLoading;appList.EmptyTitle=catalogError.Length>0?"暂时无法读取应用":appsLoading?"正在读取应用":apps.Count==0?"等待手机连接":"没有找到应用";appList.EmptyDetail=catalogError.Length>0?"请检查手机连接，然后点击设备栏的刷新按钮重试。":appsLoading?"正在为你的应用准备桌面空间。":apps.Count==0?"连接 USB 或无线 ADB 后，应用会自动出现在这里。":"试试其他关键词，或切换到全部应用。";appList.SetItems(view,prefs.Favorites,selected);catalogCount.Text=appsLoading?(apps.Count>0?"正在同步…":"正在读取…"):String.Format("{0} / {1} 个应用",view.Count,apps.Count);UpdateLaunchButtons();}
         async void LoadIcons(Device device,List<AndroidApp> catalog,int generation){try{AppIcons.AssignCached(device,catalog);appList.Invalidate();badge.Invalidate();await AppIcons.Fetch(device,catalog);if(!IsDisposed&&!closeRequested&&generation==loadGeneration){AppIcons.AssignCached(device,catalog);appList.Invalidate();badge.Invalidate();}}catch(Exception){}}
-        void UpdateLaunchButtons(){var d=SelectedDevice;bool connected=d!=null&&d.State=="device"&&!appsLoading&&(!d.Wireless||!String.IsNullOrEmpty(d.HardwareId));if(launch!=null)launch.Enabled=connected&&SelectedApp!=null;}
+        void UpdateLaunchButtons(){var d=SelectedDevice;bool connected=d!=null&&d.State=="device"&&!appsLoading&&catalogError.Length==0&&(!d.Wireless||!String.IsNullOrEmpty(d.HardwareId));if(launch!=null)launch.Enabled=connected&&SelectedApp!=null;}
         void LaunchSelected(){var a=SelectedApp;if(a!=null)Launch(a);}
         async void Launch(AndroidApp app,string captionOverride=null){
             if(!preview&&SelectedDevice!=null&&SelectedDevice.Wireless&&String.IsNullOrEmpty(SelectedDevice.HardwareId)){status.Text="请先等待无线设备身份核对完成。";return;}

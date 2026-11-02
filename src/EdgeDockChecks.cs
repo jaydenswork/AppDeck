@@ -45,6 +45,7 @@ namespace AppDeck {
                 EdgeDockController controller=null;
                 form.DockController=controller=new EdgeDockController(form,()=>busy,()=>point,()=>now,()=>screens,p=>occluded?IntPtr.Zero:controller.Collapsed&&controller.TabBounds.Contains(p)?controller.TabHandle:form.Bounds.Contains(p)?Native.GetAncestor(child==IntPtr.Zero?form.Body.Handle:child,2):IntPtr.Zero);
                 var dock=form.DockController;form.Show();focus.Show();await Task.Delay(50);
+                if(form.NativeBorderApplied){int thickness;Check(DwmGetWindowAttribute(form.Handle,37,out thickness,4)==0&&thickness>0,"DWM reports a visible native frame border");}
                 try{
                     childProcess=Process.Start(new ProcessStartInfo(Application.ExecutablePath,"--edge-test-child"){UseShellExecute=false,CreateNoWindow=true});
                     bool ready=await Task.Run(()=>childProcess.WaitForInputIdle(5000));Check(ready,"test child starts");
@@ -159,5 +160,6 @@ namespace AppDeck {
         }
         [DllImport("user32.dll")]static extern IntPtr SendMessage(IntPtr h,int message,IntPtr w,IntPtr l);
         [DllImport("user32.dll")]static extern bool EnumWindows(Native.EnumProc callback,IntPtr parameter);
+        [DllImport("dwmapi.dll")]static extern int DwmGetWindowAttribute(IntPtr window,int attribute,out int value,int size);
     }
 }

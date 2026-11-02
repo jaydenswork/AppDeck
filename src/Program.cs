@@ -45,8 +45,9 @@ namespace AppDeck {
                 if(!DisplayTasks.NeedingResize(stacks,23,new System.Drawing.Size(1920,1080)).SequenceEqual(new[]{10})||DisplayTasks.NeedingResize(stacks,0,new System.Drawing.Size(1920,1080)).Any())throw new Exception("virtual-display task isolation");
                 if(!File.Exists(Paths.Scrcpy)||!File.Exists(Paths.Adb)||!File.Exists(Path.Combine(Paths.Runtime,"appdeck-layout.jar")))throw new Exception("runtime missing");
                 WirelessChecks.Run();
+                DeviceCacheChecks.Run();
                 EdgeDockChecks.Geometry();
-                File.WriteAllText(Path.Combine(Paths.Data,"self-test.txt"),"PASS: app/device parsing, system app exclusion (all/search/favorites), catalog search/categories, argument escaping, endpoint validation, package validation, main close action validation, 8 display size/orientation combinations, virtual-display task isolation (main/other/hidden/already-sized tasks excluded), bundled runtime; wireless discovery, pairing via stdin, remembered reconnect with changed endpoints, retry throttling, identity and journal isolation, failure handling and coalesced scans; edge docking geometry and working-area boundaries\r\n",Encoding.UTF8);
+                File.WriteAllText(Path.Combine(Paths.Data,"self-test.txt"),"PASS: app/device parsing, system app exclusion (all/search/favorites), catalog search/categories, argument escaping, endpoint validation, package validation, main close action validation, 8 display size/orientation combinations, virtual-display task isolation (main/other/hidden/already-sized tasks excluded), bundled runtime; wireless discovery, pairing via stdin, remembered reconnect with changed endpoints, retry throttling, identity and journal isolation, failure handling and coalesced scans; edge docking geometry and working-area boundaries; persistent device catalogs and fresh/missing/expired icon cache selection\r\n",Encoding.UTF8);
                 return 0;
             } catch(Exception ex) {File.WriteAllText(Path.Combine(Paths.Data,"self-test.txt"),ex.ToString()); return 1;}
         }
@@ -58,7 +59,10 @@ namespace AppDeck {
                 var all=AppCatalog.Select(apps,0,"",favorites);
                 if(all.Count!=apps.Count(a=>!a.System)||all.Any(a=>a.System))throw new Exception("System filtering mismatch");
                 var wx=AppCatalog.Select(apps,0,"com.tencent.mm",favorites);if(wx.Count!=1||wx[0].Name!="微信")throw new Exception("WeChat search mismatch");
+                var identity=Commands.Adb(serial,"shell","getprop","ro.serialno").GetAwaiter().GetResult();identity.Ensure();var device=new Device{Serial=serial,HardwareId=identity.Output.Trim()};
+                if(!DeviceCache.SaveCatalog(device,all))throw new Exception("Catalog cache could not be saved");AppIcons.AssignCached(device,all);int cachedIcons=all.Count(a=>a.Icon!=null),pendingIcons=AppIcons.PendingPackages(device,all).Count;
                 string report="PASS: live device catalog\r\nLaunchable packages: "+apps.Count+"\r\nVisible user apps: "+all.Count+"\r\nExcluded system apps: "+apps.Count(a=>a.System)+"\r\nWeChat package search: "+wx.Count+"\r\nReading apps: "+AppCatalog.Select(apps,1,"",favorites).Count+"\r\nSystem package search: "+AppCatalog.Select(apps,0,"com.android.settings",favorites).Count+"\r\n";
+                report+="Cached catalog: "+DeviceCache.ReadCatalog(device).Count+"\r\nCached icons loaded from disk: "+cachedIcons+"\r\nIcons requiring phone transfer: "+pendingIcons+"\r\n";
                 File.WriteAllText(Path.Combine(Paths.Data,"catalog-check.txt"),report,Encoding.UTF8);return 0;
             }catch(Exception ex){File.WriteAllText(Path.Combine(Paths.Data,"catalog-check.txt"),ex.ToString());return 1;}
         }

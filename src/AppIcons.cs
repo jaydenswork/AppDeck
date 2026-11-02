@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -12,16 +10,17 @@ namespace AppDeck {
     internal static class AppIcons {
         static readonly Dictionary<string,Image> images=new Dictionary<string,Image>();
         static readonly SemaphoreSlim gate=new SemaphoreSlim(1,1);
-        static string Folder(Device device){using(var hash=SHA256.Create()){string key=BitConverter.ToString(hash.ComputeHash(Encoding.UTF8.GetBytes(device.HardwareId??device.Serial))).Replace("-","").Substring(0,24);return Path.Combine(Paths.Data,"icons","v2-"+key);}}
+        static string Folder(Device device){return DeviceCache.Folder(device);}
         public static void AssignCached(Device device,IEnumerable<AndroidApp> apps){
             string folder=Folder(device);foreach(var app in apps){string path=Path.Combine(folder,app.Package+".png");Image image;
-                if(!images.TryGetValue(path,out image)&&File.Exists(path))try{using(var input=new MemoryStream(File.ReadAllBytes(path)))using(var decoded=Image.FromStream(input)){image=new Bitmap(decoded);images[path]=image;}}catch(ArgumentException){try{File.Delete(path);}catch(IOException){}}catch(IOException){}
+                if(!images.TryGetValue(path,out image)&&File.Exists(path))try{using(var input=new MemoryStream(File.ReadAllBytes(path)))using(var decoded=Image.FromStream(input)){image=new Bitmap(decoded);images[path]=image;}}catch(ArgumentException){try{File.Delete(path);}catch(IOException){}catch(UnauthorizedAccessException){}}catch(IOException){}catch(UnauthorizedAccessException){}
                 if(image!=null)app.Icon=image;
             }
         }
+        internal static List<string> PendingPackages(Device device,IEnumerable<AndroidApp> apps,string dataRoot=null){string folder=DeviceCache.Folder(device,dataRoot);return apps.Select(a=>a.Package).Where(Commands.ValidPackage).Distinct().Where(p=>!File.Exists(Path.Combine(folder,p+".png"))||File.GetLastWriteTimeUtc(Path.Combine(folder,p+".png"))<DateTime.UtcNow.AddDays(-7)).ToList();}
         public static async Task Fetch(Device device,IEnumerable<AndroidApp> apps){
             await gate.WaitAsync();try{
-                string folder=Folder(device);var packages=apps.Select(a=>a.Package).Where(Commands.ValidPackage).Distinct().Where(p=>!File.Exists(Path.Combine(folder,p+".png"))||File.GetLastWriteTimeUtc(Path.Combine(folder,p+".png"))<DateTime.UtcNow.AddDays(-7)).ToList();
+                string folder=Folder(device);var packages=PendingPackages(device,apps);
                 if(packages.Count==0)return;Directory.CreateDirectory(folder);string remote="/data/local/tmp/appdeck-icons-"+Guid.NewGuid().ToString("N")+".jar";
                 try{
                     var upload=await Commands.Adb(device.Serial,"push",Path.Combine(Paths.Runtime,"appdeck-layout.jar"),remote);upload.Ensure();
