@@ -76,7 +76,7 @@ namespace AppDeck {
         public ShortcutDialog(){
             Text="快捷键";ClientSize=new Size(520,650);MinimumSize=new Size(520,650);StartPosition=FormStartPosition.CenterParent;
             var panel=new FlowLayoutPanel{Dock=DockStyle.Fill,FlowDirection=FlowDirection.TopDown,WrapContents=false,Padding=new Padding(26,18,26,18)};Body.Controls.Add(panel);
-            var heading=Theme.Label("按你的习惯操作",20,true);heading.Margin=new Padding(0,0,0,6);panel.Controls.Add(heading);
+            var heading=Theme.Label("按你的习惯操作",18,true);heading.Margin=new Padding(0,0,0,8);panel.Controls.Add(heading);
             var hint=Theme.Hint("设置即时生效，适用于所有独立投屏窗口。",9);hint.Margin=new Padding(0,0,0,16);panel.Controls.Add(hint);
             var s=Shortcuts.Settings;
             master=new ToggleRow("启用快捷操作","关闭后释放 Alt+W，停用滚轮音量映射",s.Enabled);

@@ -15,7 +15,7 @@ namespace AppDeck {
         public readonly string Package,DeviceId;
         string pendingSerial;
         readonly AndroidApp app;readonly bool flex,audio,autoOff,clipboard,landscape;
-        readonly int preset;readonly Panel viewport=new Panel();readonly Label stateLabel=Theme.Label("正在连接…",9),placeholder=Theme.Label("正在打开应用副屏…",12);
+        readonly int preset;readonly Panel viewport=new Panel();readonly Label stateLabel=Theme.Label("正在连接…",9);readonly ConnectionView placeholder=new ConnectionView();
         readonly System.Windows.Forms.Timer attachTimer=new System.Windows.Forms.Timer {Interval=100};
         readonly StringBuilder recent=new StringBuilder();readonly object logLock=new object();
         readonly string logFile;readonly ToolStripMenuItem offButton,reconnect;readonly IconButton pin;
@@ -53,7 +53,9 @@ namespace AppDeck {
             reconnect=new ToolStripMenuItem("重新连接",null,async(s,e)=>{try{if(await Stop()){if(pendingSerial!=null){lease.Rebind(pendingSerial);Serial=pendingSerial;pendingSerial=null;}stopping=false;await Start();}}catch(Exception ex){Theme.Error(this,ex);}});menu.Items.Add(reconnect);
             menu.Items.Add("切换主题",null,(s,e)=>{Theme.Set(!Theme.Dark);var settings=Preferences.Load();settings.Dark=Theme.Dark;if(!preview)settings.Save();});Theme.Menu(menu);
             viewport.Dock=DockStyle.Fill;viewport.Margin=Padding.Empty;
-            placeholder.Dock=DockStyle.Fill;placeholder.TextAlign=ContentAlignment.MiddleCenter;placeholder.AutoSize=false;viewport.Controls.Add(placeholder);
+            placeholder.Dock=DockStyle.Fill;viewport.Controls.Add(placeholder);
+            placeholder.RetryRequested+=(s,e)=>reconnect.PerformClick();placeholder.DiagnosticsRequested+=(s,e)=>MainForm.ProcessFile(Path.GetDirectoryName(logFile));
+            reconnect.EnabledChanged+=(s,e)=>placeholder.CanRetry=reconnect.Enabled;reconnect.TextChanged+=(s,e)=>placeholder.ActionText=reconnect.Text;
             viewport.Resize+=(s,e)=>FitVideo();layout.Controls.Add(viewport,0,0);
             stateLabel.Dock=DockStyle.Fill;stateLabel.AutoEllipsis=true;stateLabel.TextAlign=ContentAlignment.MiddleLeft;stateLabel.Padding=new Padding(8,0,0,0);stateLabel.Margin=Padding.Empty;layout.Controls.Add(stateLabel,0,1);
             Theme.Watch(this,()=>{viewport.BackColor=Theme.Paper;placeholder.BackColor=Theme.Paper;placeholder.ForeColor=Theme.Muted;layout.BackColor=Theme.Surface;stateLabel.BackColor=Theme.Surface;stateLabel.ForeColor=Theme.Muted;});
@@ -81,8 +83,8 @@ namespace AppDeck {
         void ShowReconnectHint(){
             placeholder.Visible=true;reconnect.Enabled=true;offButton.Enabled=false;
             bool available=pendingSerial!=null;reconnect.Text=available?"恢复投屏":"重新连接";
-            placeholder.Text=available?"手机已重新连接\n点击更多 → 恢复投屏":"连接已结束\n恢复手机连接后重试";
-            stateLabel.Text=available?"手机已重新连接 · 点击更多 → 恢复投屏":"连接已结束 · 正在等待手机重新连接";
+            placeholder.Stage=available?1:0;placeholder.Text=available?"手机已重新连接\n恢复投屏后将继续使用原来的应用页面。":"连接已结束\n恢复手机连接后，可在这里重新连接。";
+            stateLabel.Text=available?"手机已重新连接 · 可恢复投屏":"连接已结束 · 正在等待手机重新连接";
         }
         void UI(Action action){if(IsDisposed||Disposing)return;try{BeginInvoke((Action)(()=>{if(!IsDisposed)action();}));}catch(InvalidOperationException){}}
         void Log(string text){
@@ -92,7 +94,7 @@ namespace AppDeck {
             if(line==null)return;Log(line);UI(()=>{
                 if(process!=owner||stopping)return;
                 var d=Regex.Match(line,@"New display: (\d+)x(\d+)/\d+ \(id=(\d+)\)");
-                if(d.Success){videoWidth=Int32.Parse(d.Groups[1].Value);videoHeight=Int32.Parse(d.Groups[2].Value);displayId=Int32.Parse(d.Groups[3].Value);stateLabel.Text="手机已连接 · 正在准备应用副屏…";configureTask=ConfigureDisplay(lifeVersion);}
+                if(d.Success){videoWidth=Int32.Parse(d.Groups[1].Value);videoHeight=Int32.Parse(d.Groups[2].Value);displayId=Int32.Parse(d.Groups[3].Value);placeholder.Stage=1;placeholder.Text="正在启动 "+app.Name+"\n手机已连接，正在准备独立应用窗口。";stateLabel.Text="手机已连接 · 正在准备应用副屏…";configureTask=ConfigureDisplay(lifeVersion);}
                 var t=Regex.Match(line,@"Texture: (\d+)x(\d+)");if(t.Success){videoWidth=Int32.Parse(t.Groups[1].Value);videoHeight=Int32.Parse(t.Groups[2].Value);frameCount++;if(!ready){attachTimer.Interval=100;attachTimer.Start();}}
                 if(line.IndexOf("ERROR:",StringComparison.Ordinal)>=0)stateLabel.Text=line;
                 WriteStatus();
@@ -105,7 +107,7 @@ namespace AppDeck {
             attachTimer.Interval=100;
             reconnect.Text="重新连接";
             displayId=-1;video=IntPtr.Zero;ready=false;directionReady=false;directionWarning="";configureTask=null;powerTask=null;powerChecked=false;frameCount=0;reconnect.Enabled=false;offButton.Enabled=false;
-            placeholder.Visible=true;placeholder.Text="正在打开 "+app.Name+"…";stateLabel.Text="正在连接手机…";
+            placeholder.Visible=true;placeholder.Stage=0;placeholder.Text="正在连接手机\n连接后将打开 "+app.Name+" 的独立窗口。";stateLabel.Text="正在连接手机…";
             try{
                 var probe=await Commands.Adb(Serial,"get-state");probe.Ensure();if(probe.Output.Trim()!="device")throw new Exception("设备未连接，请重新连接后点击“重连”。");
                 if(version!=lifeVersion||stopping||IsDisposed)return;
@@ -147,7 +149,7 @@ namespace AppDeck {
                 ready=true;placeholder.Visible=false;offButton.Enabled=true;reconnect.Enabled=true;WriteStatus();FocusVideo();
                 if(autoOff)await ChangePower(false);
             }
-            if(!ready&&(DateTime.UtcNow-started).TotalSeconds>30){attachTimer.Interval=500;placeholder.Text=directionReady?"手机已连接，应用已在副屏运行，\n但视频首帧尚未到达。\n正在继续等待，也可点击更多 → 重新连接。":"打开耗时较长，请检查手机与应用状态。\n可点击“重连”，诊断日志位于 data/logs。";stateLabel.Text=directionReady?"等待视频首帧 · 可重新连接":"应用副屏准备超时";reconnect.Enabled=true;}
+            if(!ready&&(DateTime.UtcNow-started).TotalSeconds>30){attachTimer.Interval=500;placeholder.Text=directionReady?"正在等待应用画面\n应用已启动，但画面尚未到达。\n可以继续等待，或尝试重新连接。":"准备应用耗时较长\n请确认手机连接和应用状态，然后重试。";stateLabel.Text=directionReady?"等待视频首帧 · 可重新连接":"应用副屏准备超时";reconnect.Enabled=true;}
         }
         internal async Task WakeVirtualDisplay(){
             int version=lifeVersion;if(!Current(version))return;
@@ -224,7 +226,7 @@ namespace AppDeck {
                 if(!Current(version))return;
                 Log(await lease.Acquire(displayId,Package,component.Groups[1].Value));
                 if(!Current(version))return;await FitAppTasks(version,true);
-                if(!Current(version))return;directionReady=true;stateLabel.Text="应用已启动 · 正在等待画面…";displayTimer.Start();
+                if(!Current(version))return;directionReady=true;placeholder.Stage=2;placeholder.Text="正在等待应用画面\n应用已启动，画面准备好后会自动显示。";stateLabel.Text="应用已启动 · 正在等待画面…";displayTimer.Start();
             }catch(Exception ex){Log("Launch: "+ex.Message);if(Current(version)){
                 string error=ex.Message;attachTimer.Stop();
                 // Schedule rollback after ConfigureDisplay completes; Stop waits for this task.

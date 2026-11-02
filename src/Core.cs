@@ -92,7 +92,7 @@ namespace AppDeck {
         public string Serial, Model, State, TransportId, HardwareId;
         public bool Wireless {get{return Commands.ValidAddress(Serial)||Serial.Contains("._adb-tls-connect._tcp");}}
         public bool SamePhone(string serial,string id){return !String.IsNullOrEmpty(id)?HardwareId==id:Serial==serial;}
-        public override string ToString() { return Model + " · " + Serial + (State == "device" ? "" : " · " + State); }
+        public override string ToString() { return Model + " · " + (Wireless?"无线":"USB") + " · " + (State=="device"?"已连接":State=="unauthorized"?"待授权":"离线"); }
         public static List<Device> Parse(string s) {
             var list = new List<Device>();
             foreach (string line in s.Split('\n')) {
@@ -108,7 +108,7 @@ namespace AppDeck {
         }
     }
     internal sealed class AndroidApp {
-        public string Name, Package; public bool System;
+        public string Name, Package; public bool System;public Image Icon;
         public bool Reader { get { return Regex.IsMatch(Name + " " + Package, "小说|阅读|读书|番茄|七猫|书旗|起点|掌阅|reader|legado", RegexOptions.IgnoreCase); } }
         public static List<AndroidApp> Parse(string text) {
             var list = new List<AndroidApp>();

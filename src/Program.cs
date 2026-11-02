@@ -12,6 +12,7 @@ namespace AppDeck {
             if(args.Contains("--self-test"))return SelfTest();
             if(args.Contains("--check-wireless"))return CheckWireless();
             if(args.Length==2&&args[0]=="--check-catalog")return CheckCatalog(args[1]);
+            if(args.Length==2&&args[0]=="--check-icons")return CheckIcons(args[1]);
             Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
             if(args.Length==2&&args[0]=="--render-ui")return UIPreview.Render(args[1]);
             if(args.Length==2&&args[0]=="--check-edge-dock")return EdgeDockChecks.Desktop(args[1]);
@@ -67,6 +68,16 @@ namespace AppDeck {
                 string report="Wireless discovery: "+(monitor.DiscoveryError.Length==0?"OK":monitor.DiscoveryError)+"\r\nNearby phones: "+monitor.Nearby().Count+"\r\nPairing services: "+monitor.Services.Count(s=>s.Pairing)+"\r\nConnection services: "+monitor.Services.Count(s=>!s.Pairing)+"\r\nConnected wireless devices: "+monitor.Devices.Count(d=>d.Wireless&&d.State=="device")+"\r\nVerified wireless identities: "+monitor.Devices.Count(d=>d.Wireless&&d.State=="device"&&!String.IsNullOrEmpty(d.HardwareId))+"\r\n";
                 File.WriteAllText(Path.Combine(Paths.Data,"wireless-check.txt"),report,Encoding.UTF8);return monitor.DiscoveryError.Length==0?0:1;
             }catch(Exception ex){File.WriteAllText(Path.Combine(Paths.Data,"wireless-check.txt"),ex.Message,Encoding.UTF8);return 1;}
+        }
+        static int CheckIcons(string serial){
+            try{
+                var identity=Commands.Adb(serial,"shell","getprop","ro.serialno").GetAwaiter().GetResult();identity.Ensure();
+                var device=new Device{Serial=serial,HardwareId=identity.Output.Trim()};
+                var apps=new[]{new AndroidApp{Name="Chrome",Package="com.android.chrome"},new AndroidApp{Name="阅读",Package="io.legado.app.release"},new AndroidApp{Name="微信",Package="com.tencent.mm"}};
+                AppIcons.Fetch(device,apps).GetAwaiter().GetResult();AppIcons.AssignCached(device,apps);
+                int count=apps.Count(a=>a.Icon!=null);if(count==0)throw new Exception("No application icons returned; see icons.log");
+                File.WriteAllText(Path.Combine(Paths.Data,"icons-check.txt"),"PASS: "+count+" real 96x96 application icons read and cached; no activities launched, no control input or phone setting changes.\r\n",Encoding.UTF8);return 0;
+            }catch(Exception error){File.WriteAllText(Path.Combine(Paths.Data,"icons-check.txt"),error.ToString());return 1;}
         }
     }
 }

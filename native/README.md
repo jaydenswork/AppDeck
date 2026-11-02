@@ -1,4 +1,4 @@
-﻿# AppDeck 2.4 的运行时改动
+# AppDeck 运行时改动
 
 `scrcpy-appdeck.exe` 基于 scrcpy v4.1，许可证为 Apache-2.0。原始 `scrcpy.exe`、Android server、SDL 和 FFmpeg DLL 均保留未修改版本。
 
@@ -29,11 +29,15 @@ python native/build-client.py --source C:/build/scrcpy-4.1 --deps C:/build/deps 
 入口拒绝 displayId ≤ 0，只操作当时归属目标副屏的任务，不改主屏或全局旋转／兼容开关。每个会话使用独立临时 jar，结束后删除。首次调用附加 refresh 参数，后续尺寸一致的任务跳过。
 
 ```powershell
-javac -d build-layout native/DisplayLayout.java native/TaskSession.java native/DisplayPower.java
-java -cp ANDROID_SDK/build-tools/34.0.0/lib/d8.jar com.android.tools.r8.D8 --min-api 30 --output runtime/scrcpy/appdeck-layout.jar build-layout/DisplayLayout.class build-layout/TaskSession.class build-layout/DisplayPower.class
+javac --release 8 -cp ANDROID_SDK/platforms/android-36/android.jar -d build-layout native/DisplayLayout.java native/TaskSession.java native/DisplayPower.java native/AppIcons.java
+java -cp ANDROID_SDK/build-tools/36.1.0/lib/d8.jar com.android.tools.r8.D8 --min-api 30 --lib ANDROID_SDK/platforms/android-36/android.jar --output runtime/scrcpy/appdeck-layout.jar build-layout/DisplayLayout.class build-layout/TaskSession.class build-layout/DisplayPower.class build-layout/AppIcons.class
 ```
 
 `DisplayPower.java` 只接受 displayId > 0、类型为虚拟屏且名称/唯一标识符合 scrcpy 的显示器。视频首帧迟迟未到达时，可通过按显示器请求电源状态恢复该副屏；不发送全局唤醒键，不改变手机主屏电源、锁定或系统超时设置。调用结果记录副屏与主屏的前后状态。
+
+## 应用图标
+
+`AppIcons.java` 在独立 shell 进程中使用 `com.android.shell` 的包上下文读取已知应用的公开图标资源，将 Drawable 渲染为 96 × 96 PNG，通过标准输出传回电脑。不安装 APK、不启动 Activity、不发送控制输入、不修改手机设置。客户端按设备身份缓存图标，七天后重新读取；缓存缺失或读取失败时使用字形占位图。临时 helper 在读取完成后删除。
 
 ## 原任务接管与后台归还
 

@@ -10,25 +10,28 @@ namespace AppDeck {
     internal static class Theme {
         public static bool Dark { get; private set; }
         public static event EventHandler Changed;
-        public static Color Ink { get { return C(Dark?0xE8E8E6:0x272826); } }
-        public static Color Muted { get { return C(Dark?0x9B9E98:0x747870); } }
-        public static Color Paper { get { return C(Dark?0x181918:0xF7F8F5); } }
-        public static Color Surface { get { return C(Dark?0x20221F:0xFFFFFF); } }
-        public static Color Soft { get { return C(Dark?0x2B2E29:0xEEF0EB); } }
-        public static Color Line { get { return C(Dark?0x353932:0xE0E4DC); } }
-        public static Color Accent { get { return C(Dark?0xAD9DFF:0x7155E8); } }
-        public static Color AccentFill { get { return C(Dark?0x8670ED:0x7155E8); } }
-        public static Color AccentSoft { get { return C(Dark?0x322D4C:0xF0EBFF); } }
+        public static Color Ink { get { return C(Dark?0xECECF1:0x24242A); } }
+        public static Color Muted { get { return C(Dark?0xAAAAB4:0x686873); } }
+        public static Color Paper { get { return C(Dark?0x181818:0xF5F5F8); } }
+        public static Color Surface { get { return C(Dark?0x1F1F1F:0xFFFFFF); } }
+        public static Color Soft { get { return C(Dark?0x272727:0xEEEEF3); } }
+        public static Color Line { get { return C(Dark?0x38383E:0xDEDEE7); } }
+        public static Color ControlLine { get { return C(Dark?0x747480:0x8C8C98); } }
+        public static Color Accent { get { return C(Dark?0xB6A7FF:0x7155D8); } }
+        public static Color AccentFill { get { return C(0x7155D8); } }
+        public static Color PrimaryHover { get { return C(0x7B5FE2); } }
+        public static Color PrimaryPressed { get { return C(0x6045C2); } }
+        public static Color AccentSoft { get { return C(Dark?0x2D283D:0xF0EBFF); } }
         public static Color Green { get { return C(Dark?0x79D6B1:0x22876A); } }
         public static Color C(int rgb){return Color.FromArgb((rgb>>16)&255,(rgb>>8)&255,rgb&255);}
-        public static Font Font(float size=10,bool bold=false){return new Font("Microsoft YaHei UI",size,bold?FontStyle.Bold:FontStyle.Regular);}
+        public static Font Font(float size=10.5f,bool bold=false){return new Font("Microsoft YaHei UI",Math.Max(9,size),bold?FontStyle.Bold:FontStyle.Regular);}
         public static void Set(bool dark){if(Dark==dark)return;Dark=dark;var handler=Changed;if(handler!=null)handler(null,EventArgs.Empty);}
         public static void Watch(Control control,Action apply){EventHandler handler=(s,e)=>{if(!control.IsDisposed)apply();};Changed+=handler;control.Disposed+=(s,e)=>Changed-=handler;apply();}
         public static Button Button(string text,EventHandler click,bool primary=false){var b=new ModernButton{Text=text,Primary=primary};b.Click+=click;return b;}
-        public static Label Label(string text,float size=10,bool bold=false){var l=new Label{Text=text,AutoSize=true,Font=Font(size,bold),Margin=new Padding(0,0,0,8),BackColor=Color.Transparent};Watch(l,()=>l.ForeColor=Ink);return l;}
+        public static Label Label(string text,float size=10.5f,bool bold=false){var l=new Label{Text=text,AutoSize=true,Font=Font(size,bold),Margin=new Padding(0,0,0,8),BackColor=Color.Transparent};Watch(l,()=>l.ForeColor=Ink);return l;}
         public static Label Hint(string text,float size=9){var l=Label(text,size);Watch(l,()=>l.ForeColor=Muted);return l;}
         public static void Error(IWin32Window owner,Exception ex){MessageBox.Show(owner,ex.Message,"AppDeck",MessageBoxButtons.OK,MessageBoxIcon.Warning);}
-        public static void Menu(ContextMenuStrip menu){Watch(menu,()=>{menu.BackColor=Surface;menu.ForeColor=Ink;menu.Renderer=new MenuRenderer();menu.Font=Font(9);menu.ShowImageMargin=false;menu.ShowCheckMargin=false;menu.Padding=new Padding(5);foreach(ToolStripItem i in menu.Items){i.ForeColor=Ink;i.Padding=new Padding(10,5,10,5);i.TextAlign=ContentAlignment.MiddleLeft;}});}
+        public static void Menu(ContextMenuStrip menu){Watch(menu,()=>{menu.BackColor=Surface;menu.ForeColor=Ink;menu.Renderer=new MenuRenderer();menu.Font=Font(10.5f);menu.ShowImageMargin=false;menu.ShowCheckMargin=false;menu.Padding=new Padding(4);foreach(ToolStripItem i in menu.Items){i.ForeColor=Ink;i.Padding=new Padding(12,6,12,6);i.TextAlign=ContentAlignment.MiddleLeft;}});}
         sealed class MenuRenderer:ToolStripProfessionalRenderer {
             public MenuRenderer():base(new MenuColors()){RoundedEdges=false;}
             protected override void OnRenderItemText(ToolStripItemTextRenderEventArgs e){e.TextColor=e.Item.Enabled?Ink:Muted;e.TextRectangle=new Rectangle(e.TextRectangle.Left,0,e.TextRectangle.Width,e.Item.Height);e.TextFormat=(e.TextFormat&~TextFormatFlags.Bottom)|TextFormatFlags.VerticalCenter|TextFormatFlags.SingleLine;base.OnRenderItemText(e);}
@@ -88,10 +91,10 @@ namespace AppDeck {
     }
     internal sealed class ModernButton:Button {
         bool hover,down;public bool Primary,Quiet,Selected,AlignContentLeft;public string Glyph="";
-        public ModernButton(){SetStyle(ControlStyles.UserPaint|ControlStyles.AllPaintingInWmPaint|ControlStyles.OptimizedDoubleBuffer|ControlStyles.ResizeRedraw,true);AutoSize=false;Size=new Size(120,40);FlatStyle=FlatStyle.Flat;FlatAppearance.BorderSize=0;Cursor=Cursors.Hand;Font=Theme.Font(9.5f);Margin=new Padding(0);Theme.Watch(this,()=>{ForeColor=Theme.Ink;BackColor=Theme.Surface;Invalidate();});}
+        public ModernButton(){SetStyle(ControlStyles.UserPaint|ControlStyles.AllPaintingInWmPaint|ControlStyles.OptimizedDoubleBuffer|ControlStyles.ResizeRedraw,true);AutoSize=false;Size=new Size(120,40);FlatStyle=FlatStyle.Flat;FlatAppearance.BorderSize=0;Cursor=Cursors.Hand;Font=Theme.Font(10.5f);Margin=new Padding(0);Theme.Watch(this,()=>{ForeColor=Theme.Ink;BackColor=Theme.Surface;Invalidate();});}
         protected override void OnMouseEnter(EventArgs e){hover=true;Invalidate();base.OnMouseEnter(e);}protected override void OnMouseLeave(EventArgs e){hover=false;down=false;Invalidate();base.OnMouseLeave(e);}protected override void OnMouseDown(MouseEventArgs e){down=true;Invalidate();base.OnMouseDown(e);}protected override void OnMouseUp(MouseEventArgs e){down=false;Invalidate();base.OnMouseUp(e);}protected override void OnEnabledChanged(EventArgs e){Invalidate();base.OnEnabledChanged(e);}
         protected override void OnPaint(PaintEventArgs e){var g=e.Graphics;g.SmoothingMode=SmoothingMode.AntiAlias;g.Clear(Parent==null?Theme.Surface:Parent.BackColor);float s=g.DpiX/96f;
-            var r=new RectangleF(0.5f,0.5f,Width-1,Height-1);Color bg=Primary?(Enabled?Theme.AccentFill:Theme.Soft):Selected?Theme.AccentSoft:(down||hover?Theme.Soft:BackColor);if(!Quiet||hover||Selected)PaintKit.Fill(g,r,bg,9*s);
+            var r=new RectangleF(0.5f,0.5f,Width-1,Height-1);Color bg=Primary?(Enabled?(down?Theme.PrimaryPressed:hover?Theme.PrimaryHover:Theme.AccentFill):Theme.Soft):Selected?Theme.AccentSoft:(down||hover?Theme.Soft:BackColor);if(!Quiet||hover||Selected)PaintKit.Fill(g,r,bg,8*s);
             if(!Primary&&!Quiet&&!Selected)PaintKit.Border(g,r,Theme.Line,9*s);
             var fg=!Enabled?Theme.Muted:Primary?Color.White:Selected?Theme.Accent:Theme.Ink;
             int icon=Glyph.Length>0?(int)(18*s):0;int offset=icon>0?(int)(42*s):(int)(12*s);if(icon>0)PaintKit.Icon(g,Glyph,new RectangleF(13*s,(Height-icon)/2f,icon,icon),fg);
@@ -113,18 +116,19 @@ namespace AppDeck {
     }
     internal sealed class SurfacePanel:Panel {
         public bool Outline=true;public SurfacePanel(){DoubleBuffered=true;SetStyle(ControlStyles.ResizeRedraw,true);Padding=new Padding(18);Theme.Watch(this,()=>{BackColor=Theme.Surface;Invalidate();});}
-        protected override void OnPaintBackground(PaintEventArgs e){e.Graphics.Clear(Parent==null?Theme.Paper:Parent.BackColor);e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;PaintKit.Fill(e.Graphics,new RectangleF(0,0,Width,Height),BackColor,14*e.Graphics.DpiX/96);}
-        protected override void OnPaint(PaintEventArgs e){base.OnPaint(e);e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;if(Outline)PaintKit.Border(e.Graphics,new RectangleF(.5f,.5f,Width-1,Height-1),Theme.Line,14*e.Graphics.DpiX/96);}
+        protected override void OnPaintBackground(PaintEventArgs e){e.Graphics.Clear(Parent==null?Theme.Paper:Parent.BackColor);e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;PaintKit.Fill(e.Graphics,new RectangleF(0,0,Width,Height),BackColor,16*e.Graphics.DpiX/96);}
+        protected override void OnPaint(PaintEventArgs e){base.OnPaint(e);e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;if(Outline)PaintKit.Border(e.Graphics,new RectangleF(.5f,.5f,Width-1,Height-1),Theme.Line,16*e.Graphics.DpiX/96);}
     }
     internal sealed class Field:Panel {
         public readonly TextBox Input=new TextBox();readonly bool search;readonly IconButton clear;
-        public Field(string hint,bool isSearch=false){search=isSearch;DoubleBuffered=true;Height=42;Padding=new Padding(search?39:12,11,search?39:12,9);Input.BorderStyle=BorderStyle.None;Input.Dock=DockStyle.Fill;Input.Font=Theme.Font(10);Input.AccessibleName=hint;NativeHint.Set(Input,hint);Controls.Add(Input);Input.GotFocus+=(s,e)=>Invalidate();Input.LostFocus+=(s,e)=>Invalidate();
+        public Field(string hint,bool isSearch=false){search=isSearch;DoubleBuffered=true;Height=40;Padding=new Padding(search?39:12,10,search?39:12,8);Input.BorderStyle=BorderStyle.None;Input.Dock=DockStyle.Fill;Input.Font=Theme.Font(10.5f);Input.AccessibleName=hint;NativeHint.Set(Input,hint);Controls.Add(Input);Input.GotFocus+=(s,e)=>Invalidate();Input.LostFocus+=(s,e)=>Invalidate();
             if(search){clear=new IconButton("close","清空搜索"){Dock=DockStyle.Right,Width=30,Visible=false};clear.Click+=(s,e)=>{Input.Clear();Input.Focus();};Controls.Add(clear);Input.TextChanged+=(s,e)=>{clear.Visible=Input.TextLength>0;};}
             Theme.Watch(this,()=>{BackColor=Theme.Surface;Input.BackColor=Theme.Surface;Input.ForeColor=Theme.Ink;Invalidate();});}
-        protected override void OnPaint(PaintEventArgs e){base.OnPaint(e);e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;float s=e.Graphics.DpiX/96;PaintKit.Border(e.Graphics,new RectangleF(.5f,.5f,Width-1,Height-1),Input.Focused?Theme.Accent:Theme.Line,9*s);if(search)PaintKit.Icon(e.Graphics,"search",new RectangleF(12*s,(Height-18*s)/2,18*s,18*s),Theme.Muted);}
+        protected override void OnPaint(PaintEventArgs e){base.OnPaint(e);e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;float s=e.Graphics.DpiX/96;PaintKit.Border(e.Graphics,new RectangleF(.5f,.5f,Width-1,Height-1),Input.Focused?Theme.Accent:Theme.ControlLine,8*s,Input.Focused?1.5f:1);if(search)PaintKit.Icon(e.Graphics,"search",new RectangleF(12*s,(Height-18*s)/2,18*s,18*s),Theme.Muted);}
     }
     internal sealed class ScrollArea:Panel {
-        public FlowLayoutPanel Content;int offset;bool arranging,drag;float scale=1;
+        FlowLayoutPanel content;public FlowLayoutPanel Content{get{return content;}set{content=value;if(content!=null){content.ControlAdded+=(s,e)=>WatchFocus(e.Control);foreach(Control child in content.Controls)WatchFocus(child);}}}int offset;bool arranging,drag;float scale=1;
+        void WatchFocus(Control child){child.Enter+=(s,e)=>{if(Content==null)return;int y=Content.PointToClient(child.PointToScreen(Point.Empty)).Y;if(y<offset)ScrollTo(y);else if(y+child.Height>offset+ClientSize.Height)ScrollTo(y+child.Height-ClientSize.Height);};child.ControlAdded+=(s,e)=>WatchFocus(e.Control);foreach(Control nested in child.Controls)WatchFocus(nested);}
         public ScrollArea(){DoubleBuffered=true;SetStyle(ControlStyles.ResizeRedraw,true);Theme.Watch(this,()=>{BackColor=Theme.Surface;Invalidate();});}
         int MaxScroll{get{return Content==null?0:Math.Max(0,Content.Height-ClientSize.Height);}}
         protected override void OnLayout(LayoutEventArgs e){base.OnLayout(e);if(arranging||Content==null)return;arranging=true;using(var g=CreateGraphics())scale=g.DpiX/96;int width=Math.Max(1,ClientSize.Width-(int)(15*scale));Content.Width=width;foreach(Control c in Content.Controls)if(!c.AutoSize)c.Width=width;offset=Math.Min(offset,MaxScroll);Content.Location=new Point(0,-offset);arranging=false;Invalidate();}
@@ -136,14 +140,16 @@ namespace AppDeck {
         protected override void OnPaint(PaintEventArgs e){base.OnPaint(e);if(MaxScroll<=0)return;float h=Math.Max(28*scale,Height*(float)Height/Content.Height),top=offset*(Height-h)/MaxScroll;PaintKit.Fill(e.Graphics,new RectangleF(Width-6*scale,top,4*scale,h),Theme.Line,2*scale);}
     }
     internal sealed class ToggleRow:CheckBox {
-        public string Detail;public ToggleRow(string text,string detail,bool value){Text=text;Detail=detail;Checked=value;AutoSize=false;Height=50;Cursor=Cursors.Hand;Font=Theme.Font(9.5f);AccessibleName=text;SetStyle(ControlStyles.UserPaint|ControlStyles.AllPaintingInWmPaint|ControlStyles.OptimizedDoubleBuffer,true);Theme.Watch(this,()=>{BackColor=Theme.Surface;ForeColor=Theme.Ink;Invalidate();});}
-        protected override void OnPaint(PaintEventArgs e){var g=e.Graphics;g.Clear(BackColor);g.SmoothingMode=SmoothingMode.AntiAlias;float s=g.DpiX/96;int w=(int)(Width-54*s);PaintKit.Text(g,Text,Font,Theme.Ink,new Rectangle(0,(int)(5*s),w,(int)(22*s)));using(var f=Theme.Font(8))PaintKit.Text(g,Detail,f,Theme.Muted,new Rectangle(0,(int)(28*s),w,(int)(20*s)));
-            var r=new RectangleF(Width-39*s,17*s,36*s,21*s);PaintKit.Fill(g,r,Checked?Theme.AccentFill:Theme.Line,11*s);using(var b=new SolidBrush(Checked?Color.White:Theme.Surface))g.FillEllipse(b,r.X+(Checked?18:3)*s,r.Y+3*s,15*s,15*s);if(Focused&&ShowFocusCues)PaintKit.Border(g,new RectangleF(r.X-3,r.Y-3,r.Width+6,r.Height+6),Theme.Accent,13*s);}
+        bool hover;public string Detail;public ToggleRow(string text,string detail,bool value){Text=text;Detail=detail;Checked=value;AutoSize=false;Height=48;Cursor=Cursors.Hand;Font=Theme.Font(10.5f);AccessibleName=text;SetStyle(ControlStyles.UserPaint|ControlStyles.AllPaintingInWmPaint|ControlStyles.OptimizedDoubleBuffer,true);Theme.Watch(this,()=>{BackColor=Theme.Surface;ForeColor=Theme.Ink;Invalidate();});}
+        protected override void OnMouseEnter(EventArgs e){hover=true;Invalidate();base.OnMouseEnter(e);}protected override void OnMouseLeave(EventArgs e){hover=false;Invalidate();base.OnMouseLeave(e);}
+        protected override void OnGotFocus(EventArgs e){Invalidate();base.OnGotFocus(e);}protected override void OnLostFocus(EventArgs e){Invalidate();base.OnLostFocus(e);}
+        protected override void OnPaint(PaintEventArgs e){var g=e.Graphics;g.Clear(BackColor);g.SmoothingMode=SmoothingMode.AntiAlias;float s=g.DpiX/96;if(hover)PaintKit.Fill(g,new RectangleF(0,0,Width,Height),Theme.Soft,6*s);int w=(int)(Width-54*s);PaintKit.Text(g,Text,Font,Enabled?Theme.Ink:Theme.Muted,new Rectangle(0,0,w,(int)(24*s)));using(var f=Theme.Font(9))PaintKit.Text(g,Detail,f,Theme.Muted,new Rectangle(0,(int)(24*s),w,(int)(20*s)));
+            var r=new RectangleF(Width-40*s,12*s,36*s,20*s);PaintKit.Fill(g,r,Checked?Theme.AccentFill:Theme.ControlLine,10*s);using(var b=new SolidBrush(Color.White))g.FillEllipse(b,r.X+(Checked?18:2)*s,r.Y+2*s,16*s,16*s);if(Focused&&ShowFocusCues)PaintKit.Border(g,new RectangleF(r.X-3,r.Y-3,r.Width+6,r.Height+6),Theme.Accent,13*s);}
         protected override void OnCheckedChanged(EventArgs e){Invalidate();base.OnCheckedChanged(e);}
     }
     internal sealed class AppBadge:Control {
         public AndroidApp App;public AppBadge(){Size=new Size(50,50);DoubleBuffered=true;Theme.Watch(this,()=>Invalidate());}
-        public static void Draw(Graphics g,RectangleF r,AndroidApp app){string key=app==null?"AppDeck":app.Package;int hash=0;foreach(char c in key)hash=unchecked(hash*31+c);int[] colors={0x7155E8,0x278B72,0xC07836,0x3E80C8,0xBE607A};Color color=Theme.C(colors[(hash&0x7fffffff)%colors.Length]);PaintKit.Fill(g,r,Color.FromArgb(Theme.Dark?55:25,color),r.Width*.27f);using(var font=Theme.Font(r.Width*.29f,true))PaintKit.Text(g,app==null?"A":app.Name.Substring(0,1),font,Theme.Dark?Blend(color,Color.White,.35f):color,Rectangle.Round(r),TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);}
+        public static void Draw(Graphics g,RectangleF r,AndroidApp app){if(app!=null&&app.Icon!=null){var state=g.Save();using(var clip=PaintKit.Round(r,r.Width*.24f)){g.SetClip(clip);g.DrawImage(app.Icon,r);}g.Restore(state);return;}string key=app==null?"AppDeck":app.Package;int hash=0;foreach(char c in key)hash=unchecked(hash*31+c);int[] colors={0x7155E8,0x278B72,0xC07836,0x3E80C8,0xBE607A};Color color=Theme.C(colors[(hash&0x7fffffff)%colors.Length]);PaintKit.Fill(g,r,Color.FromArgb(Theme.Dark?55:25,color),r.Width*.27f);using(var font=Theme.Font(r.Width*.29f,true))PaintKit.Text(g,app==null?"A":app.Name.Substring(0,1),font,Theme.Dark?Blend(color,Color.White,.35f):color,Rectangle.Round(r),TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter|TextFormatFlags.NoPrefix);}
         static Color Blend(Color a,Color b,float t){return Color.FromArgb((int)(a.R*(1-t)+b.R*t),(int)(a.G*(1-t)+b.G*t),(int)(a.B*(1-t)+b.B*t));}
         protected override void OnPaint(PaintEventArgs e){e.Graphics.Clear(BackColor);e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;Draw(e.Graphics,new RectangleF(0,0,Width,Height),App);}
     }
@@ -151,16 +157,19 @@ namespace AppDeck {
         List<AndroidApp> items=new List<AndroidApp>();HashSet<string> favorites=new HashSet<string>();int selected=-1,hover=-1;float scale=1;int cols=2,cardWidth=210,cardHeight=100,gap=12;public string EmptyTitle="等待手机连接",EmptyDetail="连接 USB 或无线 ADB 后，应用会出现在这里。";
         public event EventHandler SelectionChanged,OpenRequested,FavoriteRequested;
         public AndroidApp SelectedApp{get{return selected>=0&&selected<items.Count?items[selected]:null;}}
-        int scrollOffset,maxScroll;bool scrollDrag;
+        int scrollOffset,maxScroll;bool scrollDrag;readonly ToolTip hint=new ToolTip{InitialDelay=600,ReshowDelay=200};
+        public bool Loading {get;set;}
         public CatalogView(){DoubleBuffered=true;AutoScroll=false;TabStop=true;AccessibleName="应用卡片列表";SetStyle(ControlStyles.Selectable|ControlStyles.ResizeRedraw,true);Theme.Watch(this,()=>{BackColor=Theme.Paper;Invalidate();});}
         public void SetItems(List<AndroidApp> data,HashSet<string> stars,string package){items=data;favorites=stars;selected=items.FindIndex(a=>a.Package==package);if(selected<0&&items.Count>0)selected=0;scrollOffset=0;Measure();Notify();Invalidate();}
         void Notify(){var a=SelectedApp;AccessibleDescription=a==null?EmptyTitle:"已选择 "+a.Name+"，按 Enter 打开窗口";var h=SelectionChanged;if(h!=null)h(this,EventArgs.Empty);}
-        void Measure(){using(var g=CreateGraphics())scale=g.DpiX/96f;gap=(int)(12*scale);cardHeight=(int)(98*scale);int available=Math.Max(1,ClientSize.Width-(int)(14*scale));cols=Math.Max(1,available/(int)(190*scale));cardWidth=Math.Max(1,(available-gap*(cols-1))/cols);maxScroll=Math.Max(0,((items.Count+cols-1)/cols)*(cardHeight+gap)-gap-ClientSize.Height);scrollOffset=Math.Min(scrollOffset,maxScroll);}
+        void Measure(){using(var g=CreateGraphics())scale=g.DpiX/96f;gap=(int)(12*scale);cardHeight=(int)(80*scale);int available=Math.Max(1,ClientSize.Width-(int)(12*scale));cols=Math.Max(1,(available+gap)/(int)(204*scale));cardWidth=Math.Max(1,(available-gap*(cols-1))/cols);maxScroll=Math.Max(0,((items.Count+cols-1)/cols)*(cardHeight+gap)-gap-ClientSize.Height);scrollOffset=Math.Min(scrollOffset,maxScroll);}
         protected override void OnResize(EventArgs e){base.OnResize(e);Measure();Invalidate();}
         Rectangle Card(int i){return new Rectangle((i%cols)*(cardWidth+gap),(i/cols)*(cardHeight+gap)-scrollOffset,cardWidth,cardHeight);}
         int Hit(Point p){for(int i=0;i<items.Count;i++)if(Card(i).Contains(p))return i;return -1;}
-        protected override void OnMouseMove(MouseEventArgs e){base.OnMouseMove(e);if(scrollDrag){ScrollTo((int)((float)e.Y/Math.Max(1,Height)*maxScroll));return;}int h=Hit(e.Location);if(h!=hover){hover=h;Cursor=h>=0?Cursors.Hand:Cursors.Default;Invalidate();}}
-        protected override void OnMouseLeave(EventArgs e){hover=-1;Invalidate();base.OnMouseLeave(e);}
+        protected override void OnMouseMove(MouseEventArgs e){base.OnMouseMove(e);if(scrollDrag){ScrollTo((int)((float)e.Y/Math.Max(1,Height)*maxScroll));return;}int h=Hit(e.Location);if(h!=hover){hover=h;hint.SetToolTip(this,h<0?"":items[h].Name+"\n"+items[h].Package+"\n双击打开独立窗口");Cursor=h>=0?Cursors.Hand:Cursors.Default;Invalidate();}}
+        protected override void OnMouseLeave(EventArgs e){hover=-1;hint.SetToolTip(this,"");Invalidate();base.OnMouseLeave(e);}
+        protected override void Dispose(bool disposing){if(disposing)hint.Dispose();base.Dispose(disposing);}
+        protected override void OnGotFocus(EventArgs e){Invalidate();base.OnGotFocus(e);}protected override void OnLostFocus(EventArgs e){Invalidate();base.OnLostFocus(e);}
         protected override void OnMouseDown(MouseEventArgs e){base.OnMouseDown(e);Focus();if(maxScroll>0&&e.X>Width-14*scale){scrollDrag=true;Capture=true;ScrollTo((int)((float)e.Y/Math.Max(1,Height)*maxScroll));return;}int h=Hit(e.Location);if(h<0)return;selected=h;Notify();var r=Card(h);if(e.X>r.Right-34*scale&&e.Y<r.Top+32*scale){var handler=FavoriteRequested;if(handler!=null)handler(this,EventArgs.Empty);}Invalidate();}
         protected override void OnMouseUp(MouseEventArgs e){scrollDrag=false;Capture=false;base.OnMouseUp(e);}
         void ScrollTo(int y){scrollOffset=Math.Max(0,Math.Min(maxScroll,y));Invalidate();}
@@ -169,10 +178,11 @@ namespace AppDeck {
         protected override bool IsInputKey(Keys key){var k=key&Keys.KeyCode;return k==Keys.Up||k==Keys.Down||k==Keys.Left||k==Keys.Right||base.IsInputKey(key);}
         protected override void OnKeyDown(KeyEventArgs e){base.OnKeyDown(e);if(e.KeyCode==Keys.Enter){e.Handled=true;var action=OpenRequested;if(action!=null)action(this,EventArgs.Empty);return;}int next=selected;if(e.KeyCode==Keys.Right)next++;else if(e.KeyCode==Keys.Left)next--;else if(e.KeyCode==Keys.Down)next+=cols;else if(e.KeyCode==Keys.Up)next-=cols;else return;e.Handled=true;if(items.Count==0)return;selected=Math.Max(0,Math.Min(items.Count-1,next));var r=Card(selected);if(r.Bottom>ClientSize.Height)ScrollTo(scrollOffset+r.Bottom-ClientSize.Height+gap);else if(r.Top<0)ScrollTo(scrollOffset+r.Top);Notify();Invalidate();}
         protected override void OnScroll(ScrollEventArgs se){base.OnScroll(se);Invalidate();}
-        protected override void OnPaint(PaintEventArgs e){base.OnPaint(e);var g=e.Graphics;g.SmoothingMode=SmoothingMode.AntiAlias;if(items.Count==0){float cx=ClientSize.Width/2f,cy=ClientSize.Height*.36f;PaintKit.Fill(g,new RectangleF(cx-38*scale,cy-38*scale,76*scale,76*scale),Theme.Soft,24*scale);PaintKit.Icon(g,"phone",new RectangleF(cx-18*scale,cy-18*scale,36*scale,36*scale),Theme.Muted);using(var f=Theme.Font(13,true))PaintKit.Text(g,EmptyTitle,f,Theme.Ink,new Rectangle(0,(int)(cy+53*scale),ClientSize.Width,(int)(30*scale)),TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter);using(var f=Theme.Font(9))PaintKit.Text(g,EmptyDetail,f,Theme.Muted,new Rectangle(10,(int)(cy+88*scale),ClientSize.Width-20,(int)(70*scale)),TextFormatFlags.HorizontalCenter|TextFormatFlags.Top|TextFormatFlags.WordBreak);return;}
-            using(var nameFont=Theme.Font(10,true))using(var packageFont=Theme.Font(8))for(int i=0;i<items.Count;i++){var r=Card(i);if(r.Bottom<0||r.Top>Height)continue;bool active=i==selected;var a=items[i];PaintKit.Fill(g,new RectangleF(r.X+.5f,r.Y+.5f,r.Width-1,r.Height-1),active?Theme.AccentSoft:Theme.Surface,12*scale);PaintKit.Border(g,new RectangleF(r.X+.5f,r.Y+.5f,r.Width-1,r.Height-1),active?Theme.Accent:(i==hover?Theme.Muted:Theme.Line),12*scale,active?1.5f:1);
-                AppBadge.Draw(g,new RectangleF(r.X+14*scale,r.Y+16*scale,40*scale,40*scale),a);PaintKit.Text(g,a.Name,nameFont,Theme.Ink,new Rectangle(r.X+(int)(64*scale),r.Y+(int)(19*scale),r.Width-(int)(89*scale),(int)(30*scale)));PaintKit.Text(g,a.Package,packageFont,Theme.Muted,new Rectangle(r.X+(int)(14*scale),r.Y+(int)(65*scale),r.Width-(int)(28*scale),(int)(20*scale)));
-                if(favorites.Contains(a.Package)||i==hover)PaintKit.Icon(g,"star",new RectangleF(r.Right-27*scale,r.Top+11*scale,15*scale,15*scale),favorites.Contains(a.Package)?Theme.Accent:Theme.Muted);
+        protected override void OnPaint(PaintEventArgs e){base.OnPaint(e);var g=e.Graphics;g.SmoothingMode=SmoothingMode.AntiAlias;if(Loading&&items.Count==0){for(int i=0;i<cols*3;i++){var r=Card(i);PaintKit.Fill(g,r,Theme.Surface,12*scale);PaintKit.Fill(g,new RectangleF(r.X+16*scale,r.Y+20*scale,40*scale,40*scale),Theme.Soft,10*scale);PaintKit.Fill(g,new RectangleF(r.X+68*scale,r.Y+30*scale,Math.Max(16,r.Width-100*scale),12*scale),Theme.Soft,4*scale);}return;}if(items.Count==0){float cx=ClientSize.Width/2f,cy=ClientSize.Height*.30f;PaintKit.Fill(g,new RectangleF(cx-32*scale,cy-32*scale,64*scale,64*scale),Theme.Soft,16*scale);PaintKit.Icon(g,"phone",new RectangleF(cx-16*scale,cy-16*scale,32*scale,32*scale),Theme.Muted);using(var f=Theme.Font(12,true))PaintKit.Text(g,EmptyTitle,f,Theme.Ink,new Rectangle(0,(int)(cy+48*scale),ClientSize.Width,(int)(30*scale)),TextFormatFlags.HorizontalCenter|TextFormatFlags.VerticalCenter);using(var f=Theme.Font(9))PaintKit.Text(g,EmptyDetail,f,Theme.Muted,new Rectangle(16,(int)(cy+88*scale),ClientSize.Width-32,(int)(80*scale)),TextFormatFlags.HorizontalCenter|TextFormatFlags.Top|TextFormatFlags.WordBreak);return;}
+            using(var nameFont=Theme.Font(10.5f,true))for(int i=0;i<items.Count;i++){var r=Card(i);if(r.Bottom<0||r.Top>Height)continue;bool active=i==selected;var a=items[i];PaintKit.Fill(g,new RectangleF(r.X+.5f,r.Y+.5f,r.Width-1,r.Height-1),active?Theme.AccentSoft:i==hover?Theme.Soft:Theme.Surface,12*scale);PaintKit.Border(g,new RectangleF(r.X+.5f,r.Y+.5f,r.Width-1,r.Height-1),active?Theme.Accent:Theme.Line,12*scale,active?1.5f:1);
+                AppBadge.Draw(g,new RectangleF(r.X+16*scale,r.Y+20*scale,40*scale,40*scale),a);PaintKit.Text(g,a.Name,nameFont,Theme.Ink,new Rectangle(r.X+(int)(68*scale),r.Y+(int)(24*scale),r.Width-(int)(100*scale),(int)(32*scale)));
+                if(favorites.Contains(a.Package)||i==hover)PaintKit.Icon(g,"star",new RectangleF(r.Right-26*scale,r.Top+12*scale,14*scale,14*scale),favorites.Contains(a.Package)?Theme.Accent:Theme.Muted);
+                if(active&&Focused&&ShowFocusCues)PaintKit.Border(g,new RectangleF(r.X+4*scale,r.Y+4*scale,r.Width-8*scale,r.Height-8*scale),Theme.Accent,8*scale);
             }
             if(maxScroll>0){float thumb=Math.Max(32*scale,Height*(float)Height/(Height+maxScroll));PaintKit.Fill(g,new RectangleF(Width-6*scale,scrollOffset*(Height-thumb)/maxScroll,4*scale,thumb),Theme.Line,2*scale);}
         }
