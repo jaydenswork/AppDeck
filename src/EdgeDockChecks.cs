@@ -32,7 +32,7 @@ namespace AppDeck {
         public static int Desktop(string folder){
             Directory.CreateDirectory(folder);int result=1;
             using(var runner=new Runner()){runner.Shown+=async(s,e)=>{
-                try{await Windows(folder);File.WriteAllText(Path.Combine(folder,"edge-dock-check.txt"),"PASS: four-edge native move messages; cumulative pointer movement detaches; 220 ms hide / 40 ms hover delays; 140 ms clipped slide with unchanged HWND and dimensions; no activation on hover; menu/dialog/drag pause; pin preservation; minimize/maximize; tray integration; monitor work-area change and disconnect; disposal; main-window isolation; cast and main caption close buttons; immediate hide with delayed cleanup; responsive UI while pending; failed return restores window; retry and duplicate-close coalescing. Real HWND operations with injected pointer, hit target, time and display topology on the primary monitor; no physical cursor movement or Android device access. Physical mouse feel and actual scrcpy playback require separate acceptance.\r\n",Encoding.UTF8);result=0;}
+                try{await Windows(folder);File.WriteAllText(Path.Combine(folder,"edge-dock-check.txt"),"PASS: four-edge native move messages; cumulative pointer movement detaches; 220 ms hide / 40 ms hover delays; 140 ms clipped slide with unchanged HWND and dimensions; no activation on hover; menu/dialog/drag pause; pin preservation; minimize/maximize; tray integration; monitor work-area change and disconnect; disposal; main-window isolation; cast and main caption close buttons; immediate hide with delayed cleanup; responsive UI while pending; failed return restores window; retry and duplicate-close coalescing; stable wireless dialog across discovery pulses and missed advertisements; vertical-only scrolling. Real HWND operations with injected pointer, hit target, time and display topology on the primary monitor; no physical cursor movement or Android device access. Physical mouse feel and actual scrcpy playback require separate acceptance.\r\n",Encoding.UTF8);result=0;}
                 catch(Exception ex){File.WriteAllText(Path.Combine(folder,"edge-dock-check.txt"),ex.ToString(),Encoding.UTF8);}
                 finally{runner.Close();}
             };Application.Run(runner);}return result;
@@ -129,6 +129,7 @@ namespace AppDeck {
                 main.StartPosition=FormStartPosition.Manual;main.Location=new Point(area.Left+20,area.Top+20);main.Show();await Task.Delay(25);
                 CloseButton(main).PerformClick();for(int retry=0;retry<20&&!main.IsDisposed;retry++)await Task.Delay(25);Check(main.IsDisposed,"main caption close button exits with no active leases");
             }
+            await WirelessDialogChecks.Run(folder);
         }
         static void Drag(Form form,Rectangle target){
             SendMessage(form.Handle,0x231,IntPtr.Zero,IntPtr.Zero);form.Bounds=Moving(form,target);SendMessage(form.Handle,0x232,IntPtr.Zero,IntPtr.Zero);

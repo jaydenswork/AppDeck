@@ -5,6 +5,9 @@ using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
 namespace AppDeck {
+    internal sealed class BufferedFlowPanel:FlowLayoutPanel {
+        public BufferedFlowPanel(){DoubleBuffered=true;SetStyle(ControlStyles.AllPaintingInWmPaint|ControlStyles.OptimizedDoubleBuffer|ControlStyles.ResizeRedraw,true);}
+    }
     internal sealed class SegmentedChoice:Control {
         public readonly List<object> Items=new List<object>();int index=-1;
         public event EventHandler SelectedIndexChanged;

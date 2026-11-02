@@ -10,12 +10,12 @@ namespace AppDeck {
         readonly SelectBox phones=new SelectBox{Width=528,Height=40,EmptyText="正在查找手机…"};
         readonly Field address=new Field("连接地址，例如 192.168.1.10:37521"),pairAddress=new Field("配对地址，端口与连接地址不同"),code=new Field("六位配对码");
         readonly Label discovery=Theme.Hint("手机和电脑需在可互通的局域网内。",9),status=Theme.Hint("已配对手机会自动连接，无需记住地址和端口。",9);
-        readonly FlowLayoutPanel content=new FlowLayoutPanel{Dock=DockStyle.Fill,Padding=new Padding(24,20,24,16),FlowDirection=FlowDirection.TopDown,WrapContents=false,AutoScroll=true};
+        readonly FlowLayoutPanel content=new BufferedFlowPanel{Dock=DockStyle.Fill,Padding=new Padding(24,20,24,16),FlowDirection=FlowDirection.TopDown,WrapContents=false,AutoScroll=true};
         readonly Panel pairGroup=new Panel{Width=528,Height=140,Margin=new Padding(0,16,0,0)},manualGroup=new Panel{Width=528,Height=148,Visible=false,Margin=Padding.Empty};
         readonly ModernButton connect,pair,refresh,manualConnect,manualPair,manualToggle;
-        bool updating,manualExpanded,previewState;string phoneSignature="";NearbyPhone selectedPhone;
+        bool updating,manualExpanded,previewState,arranging;int layoutState=-1;string phoneSignature="";NearbyPhone selectedPhone;
         public WirelessDialog(WirelessMonitor monitor=null){
-            this.monitor=monitor;Text="无线连接";ClientSize=new Size(580,430);MinimumSize=new Size(580,400);MaximizeBox=false;Caption.SetWindowButtons(false,false);StartPosition=FormStartPosition.CenterParent;Body.Controls.Add(content);
+            this.monitor=monitor;Text="无线连接";Size=new Size(608,430);MinimumSize=new Size(608,400);MaximumSize=new Size(608,Int16.MaxValue);MaximizeBox=false;Caption.SetWindowButtons(false,false);StartPosition=FormStartPosition.CenterParent;Body.Controls.Add(content);
             var heading=Theme.Label("连接你的手机",18,true);heading.Margin=new Padding(0,0,0,8);content.Controls.Add(heading);
             var hint=Theme.Hint("在手机开发者选项中开启“无线调试”。",10.5f);hint.Margin=new Padding(0,0,0,20);content.Controls.Add(hint);
             phones.Margin=new Padding(0,0,0,8);phones.AccessibleName="发现的无线调试手机";content.Controls.Add(phones);phones.SelectedIndexChanged+=(s,e)=>{if(!updating){selectedPhone=phones.SelectedItem as NearbyPhone;UpdateSelection();}};
@@ -37,16 +37,27 @@ namespace AppDeck {
         }
         static FlowLayoutPanel Row(){return new FlowLayoutPanel{Width=528,Height=40,Margin=Padding.Empty,WrapContents=false};}
         void UpdateSections(){
-            var phone=phones.SelectedItem as NearbyPhone;bool needsPairing=phone!=null&&!phone.Connected&&phone.Pair!=null,showPair=manualExpanded||needsPairing;
-            pairGroup.Visible=showPair;manualGroup.Visible=manualExpanded;manualToggle.Text=manualExpanded?"收起手动连接":"无法发现？手动填写地址";
-            connect.Visible=!needsPairing;refresh.Margin=needsPairing?Padding.Empty:new Padding(8,0,0,0);pair.Visible=needsPairing;pair.Primary=!manualExpanded;
-            pairGroup.Controls[0].Text=needsPairing?"首次使用 · 配对这台手机":"手动配对 · 六位配对码";
-            content.PerformLayout();int height=content.Padding.Vertical+Caption.Height+8;
-            foreach(Control control in content.Controls)if(control!=pairGroup&&control!=manualGroup)height+=control.Height+control.Margin.Vertical;
-            if(showPair)height+=pairGroup.Height+pairGroup.Margin.Vertical;if(manualExpanded)height+=manualGroup.Height+manualGroup.Margin.Vertical;
-            int maxHeight=Math.Max(MinimumSize.Height,Screen.PrimaryScreen.WorkingArea.Height-48);
-            ClientSize=new Size(ClientSize.Width,Math.Min(maxHeight,Math.Max(MinimumSize.Height,height)));
+            var phone=phones.SelectedItem as NearbyPhone??selectedPhone;bool needsPairing=phone!=null&&!phone.Connected&&phone.Pair!=null,showPair=manualExpanded||needsPairing;
+            int next=DeviceDpi*8+(manualExpanded?1:0)+(needsPairing?2:0);if(arranging||next==layoutState)return;
+            arranging=true;SuspendLayout();Body.SuspendLayout();content.SuspendLayout();
+            try{
+                pairGroup.Visible=showPair;manualGroup.Visible=manualExpanded;manualToggle.Text=manualExpanded?"收起手动连接":"无法发现？手动填写地址";
+                connect.Visible=!needsPairing;refresh.Margin=needsPairing?Padding.Empty:new Padding(8,0,0,0);pair.Visible=needsPairing;pair.Primary=!manualExpanded;
+                pairGroup.Controls[0].Text=needsPairing?"首次使用 · 配对这台手机":"手动配对 · 六位配对码";
+                int height=content.Padding.Vertical+Caption.Height+Padding.Vertical;
+                foreach(Control control in content.Controls)if(control!=pairGroup&&control!=manualGroup)height+=control.Height+control.Margin.Vertical;
+                if(showPair)height+=pairGroup.Height+pairGroup.Margin.Vertical;if(manualExpanded)height+=manualGroup.Height+manualGroup.Margin.Vertical;
+                int maxHeight=Math.Max(MinimumSize.Height,Screen.PrimaryScreen.WorkingArea.Height-48),target=Math.Min(maxHeight,Math.Max(MinimumSize.Height,height));
+                // Use outer height for this custom frame; avoid client/non-client conversions
+                // and repeated sizing work on discovery notifications.
+                if(Height!=target)Height=target;layoutState=next;
+            }finally{content.ResumeLayout(true);Body.ResumeLayout(true);ResumeLayout(true);arranging=false;}
+            Invalidate(true);
         }
+        protected override void OnLoad(EventArgs e){base.OnLoad(e);layoutState=-1;UpdateSections();}
+        protected override void OnPaintBackground(PaintEventArgs e){e.Graphics.Clear(Theme.Surface);}
+        protected override void OnSizeChanged(EventArgs e){base.OnSizeChanged(e);if(IsHandleCreated&&!arranging)Invalidate(true);}
+        protected override void OnDpiChanged(DpiChangedEventArgs e){base.OnDpiChanged(e);if(IsHandleCreated)BeginInvoke((Action)(()=>{if(!IsDisposed){layoutState=-1;UpdateSections();}}));}
         void MonitorChanged(object sender,EventArgs e){if(!IsDisposed&&!Disposing)UpdatePhones();}
         void UpdatePhones(){
             var nearby=monitor.Nearby();string signature=String.Join("|",nearby.Select(p=>p.ToString()+"/"+(p.Pair==null?"":p.Pair.Name+"/"+p.Pair.Address)+"/"+(p.Connect==null?"":p.Connect.Name+"/"+p.Connect.Address)));
